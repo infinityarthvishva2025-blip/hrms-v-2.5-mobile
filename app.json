@@ -1,0 +1,88 @@
+{
+  "expo": {
+    "name": "Infinity HRMS",
+    "slug": "infinity-hrms",
+    "version": "1.0.2",
+    "orientation": "portrait",
+
+    "icon": "./assets/images/logo3.6_ios.png",
+    "scheme": "frontend",
+    "userInterfaceStyle": "automatic",
+
+    "newArchEnabled": false,
+
+    "splash": {
+      "image": "./assets/images/infinity-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff",
+      "dark": {
+        "backgroundColor": "#000000"
+      }
+    },
+
+    "ios": {
+      "supportsTablet": true
+    },
+
+    "android": {
+      "package": "com.infinityarthvishva.hrms",
+      "versionCode": 6,
+
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/logo3.6_adaptive_foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+
+      "googleServicesFile": "./google-services.json"
+    },
+
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/infinity-logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-image-picker",
+      "expo-document-picker",
+      "expo-asset",
+      "@react-native-community/datetimepicker"
+    ],
+
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4cea5c20-6ce7-4bb3-a44d-cff794d4f2cb"
+      }
+    }
+  }
+}
