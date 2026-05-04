@@ -13,4 +13,5 @@ export const getDepartments = () => client.get('/employees/departments');
 export const getNextEmployeeCode = () => client.get('/employees/next-code');
 export const getManagementEmployees = () => client.get('/employees/management');
 export const getUpcomingBirthdays = () => client.get('/employees/birthdays/upcoming');
+export const updateFaceDescriptor = (data) => client.put('/employees/profile/face-descriptor', data);
 

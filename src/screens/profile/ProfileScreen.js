@@ -7,7 +7,8 @@ import {
   TouchableOpacity, 
   StatusBar, 
   Dimensions,
-  Alert
+  Alert,
+  Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,11 @@ import { useAuth } from '../../hooks/useAuth';
 import Avatar from '../../components/common/Avatar';
 import Toast from 'react-native-toast-message';
 import { LinearGradient } from 'expo-linear-gradient';
+import { updateFaceDescriptor } from '../../api/employee.api';
+import { WebView } from 'react-native-webview';
+import Modal from 'react-native-modal';
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const { width } = Dimensions.get('window');
 
@@ -44,8 +50,27 @@ const InfoRow = ({ icon, label, value, isLast }) => (
 );
 
 const ProfileScreen = ({ navigation }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshProfile } = useAuth();
   const insets = useSafeAreaInsets();
+
+  const [showFaceModal, setShowFaceModal] = React.useState(false);
+  const [registeringFace, setRegisteringFace] = React.useState(false);
+  const [htmlContent, setHtmlContent] = React.useState('');
+  const webviewRef = React.useRef(null);
+
+  // Load HTML securely for Android camera access
+  React.useEffect(() => {
+    const loadHtml = async () => {
+      try {
+        const [asset] = await Asset.loadAsync(require('../../../face-verification.html'));
+        const html = await FileSystem.readAsStringAsync(asset.localUri);
+        setHtmlContent(html);
+      } catch (e) {
+        console.error('Failed to load HTML asset', e);
+      }
+    };
+    loadHtml();
+  }, []);
 
   const roleStyle = useMemo(() => roleColors[user?.role] || roleColors.Employee, [user?.role]);
 
@@ -65,6 +90,36 @@ const ProfileScreen = ({ navigation }) => {
         }
       ]
     );
+  };
+
+  const handleRegisterFace = () => {
+    setShowFaceModal(true);
+  };
+
+  const handleWebViewMessage = async (event) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+      if (msg.type === 'ready') {
+        // WebView is ready
+      } else if (msg.type === 'error') {
+        Toast.show({ type: 'error', text1: 'Face Verification Error', text2: msg.error });
+      } else if (msg.type === 'cancel') {
+        setShowFaceModal(false);
+      } else if (msg.type === 'descriptor') {
+        setRegisteringFace(true);
+        const descriptor = msg.descriptor;
+        
+        await updateFaceDescriptor({ faceDescriptor: descriptor });
+        Toast.show({ type: 'success', text1: 'Face ID Registered Successfully' });
+        setShowFaceModal(false);
+        await refreshProfile();
+        setRegisteringFace(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setRegisteringFace(false);
+      Toast.show({ type: 'error', text1: 'Registration Failed' });
+    }
   };
 
   return (
@@ -130,6 +185,36 @@ const ProfileScreen = ({ navigation }) => {
            <InfoRow icon="call-outline" label="Direct Hotline" value={user?.mobileNumber} isLast />
         </InfoCard>
 
+        {/* Face ID Verification */}
+        <InfoCard title="Face ID Verification" icon="camera-outline">
+           <View style={[styles.securityItem, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+              <View style={styles.securityHeader}>
+                 <View style={[styles.securityIconBg, { backgroundColor: colors.info + '10' }]}>
+                    <Ionicons name="camera-outline" size={20} color={colors.info} />
+                 </View>
+                 <View style={styles.securityText}>
+                    <Text style={styles.securityTitle}>Biometric Profile</Text>
+                    <Text style={styles.securityStatus}>
+                      {user?.faceDescriptor?.length > 0 
+                        ? "Active and Secured" 
+                        : "Not Registered"}
+                    </Text>
+                 </View>
+                 {(!user?.faceDescriptor || user?.faceDescriptor?.length === 0) && (
+                   <TouchableOpacity 
+                     style={[styles.securityBtn, { borderColor: colors.info }]}
+                     onPress={handleRegisterFace}
+                     disabled={registeringFace}
+                   >
+                      <Text style={[styles.securityBtnText, { color: colors.info }]}>
+                        {registeringFace ? "Saving..." : "Register"}
+                      </Text>
+                   </TouchableOpacity>
+                 )}
+              </View>
+           </View>
+        </InfoCard>
+
         {/* Security & Access Protection */}
         <InfoCard title="Account Protection" icon="shield-checkmark-outline">
            <View style={[styles.securityItem, { borderBottomWidth: 0, paddingBottom: 0 }]}>
@@ -167,6 +252,39 @@ const ProfileScreen = ({ navigation }) => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Face Verification Modal (WebView) */}
+      <Modal
+        isVisible={showFaceModal}
+        style={{ margin: 0 }}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        backdropOpacity={1}
+        backdropColor="#080C14"
+      >
+        <View style={{ flex: 1, backgroundColor: '#080C14', paddingTop: Platform.OS === 'ios' ? 40 : 0 }}>
+          {showFaceModal && !!htmlContent && (
+            <WebView
+              ref={webviewRef}
+              source={{ html: htmlContent, baseUrl: 'https://localhost' }}
+              originWhitelist={['*']}
+              allowFileAccessFromFileURLs={true}
+              allowUniversalAccessFromFileURLs={true}
+              mixedContentMode="always"
+              style={{ flex: 1, backgroundColor: '#080C14' }}
+              onMessage={handleWebViewMessage}
+              mediaPlaybackRequiresUserAction={false}
+              allowsInlineMediaPlayback={true}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              onPermissionRequest={(request) => {
+                // Auto-grant camera & mic permissions for face registration
+                request.grant(request.resources);
+              }}
+            />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };

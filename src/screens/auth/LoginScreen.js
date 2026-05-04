@@ -11,7 +11,8 @@ import {
   TextInput, 
   ActivityIndicator, 
   StatusBar,
-  Modal
+  Modal,
+  Image
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ import { forgotPassword } from '../../api/auth.api';
 import { colors } from '../../constants/colors';
 import Toast from 'react-native-toast-message';
 import { LinearGradient } from 'expo-linear-gradient';
+const LOGO_IMG = require('../../../assets/images/logo3.6.png');
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,6 +37,7 @@ const LoginScreen = () => {
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [focusedInput, setFocusedInput] = useState(null);
 
   const handleLogin = async () => {
     if (!employeeCode || !password) {
@@ -92,70 +95,94 @@ const LoginScreen = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
+      <LinearGradient
+        colors={['#F8FAFC', '#EFF6FF', '#F8FAFC']}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
       <KeyboardAvoidingView 
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView 
-          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 60 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 40 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header Branding (Light Mode) */}
+          {/* Header Branding (Premium) */}
           <View style={styles.header}>
-             <View style={styles.logoCircle}>
-                <LinearGradient
-                  colors={colors.gradients.primary}
-                  style={styles.logoIcon}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Ionicons name="business" size={44} color="#fff" />
-                </LinearGradient>
+             <View style={styles.logoContainer}>
+                <Image 
+                  source={LOGO_IMG} 
+                  style={styles.logoImage} 
+                  resizeMode="contain"
+                />
              </View>
              <Text style={styles.brandName}>HRMS Portal</Text>
-             <Text style={styles.brandTagline}>Enterprise Workforce Management</Text>
+             <Text style={styles.brandTagline}>Intelligent Workforce Management</Text>
           </View>
 
           {/* Elevated Form Card (Light Mode) */}
           <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Sign In</Text>
-            <Text style={styles.formSubtitle}>Access your professional workspace</Text>
+            <Text style={styles.formTitle}>Welcome Back</Text>
+            <Text style={styles.formSubtitle}>Sign in to continue to your workspace</Text>
 
             <View style={styles.inputGroup}>
                <Text style={styles.inputLabel}>EMPLOYEE CODE</Text>
-               <View style={styles.inputContainer}>
-                  <Ionicons name="person-outline" size={20} color={colors.textTertiary} style={styles.inputIcon} />
+               <View style={[
+                  styles.inputContainer, 
+                  focusedInput === 'code' && { borderColor: '#6366F1', backgroundColor: '#fff' }
+                ]}>
+                  <Ionicons 
+                    name="person-outline" 
+                    size={22} 
+                    color={focusedInput === 'code' ? '#6366F1' : '#94A3B8'} 
+                    style={styles.inputIcon} 
+                  />
                   <TextInput
-                    placeholder="Enter Code (e.g. IA001)"
-                    placeholderTextColor={colors.textTertiary}
+                    placeholder="Employee Code"
+                    placeholderTextColor="#94A3B8"
                     value={employeeCode}
                     onChangeText={setEmployeeCode}
+                    onFocus={() => setFocusedInput('code')}
+                    onBlur={() => setFocusedInput(null)}
                     style={styles.textInput}
                     autoCapitalize="characters"
-                    selectionColor={colors.primary}
+                    selectionColor="#6366F1"
                   />
                </View>
             </View>
 
             <View style={styles.inputGroup}>
                <Text style={styles.inputLabel}>PASSWORD</Text>
-               <View style={styles.inputContainer}>
-                  <Ionicons name="lock-closed-outline" size={20} color={colors.textTertiary} style={styles.inputIcon} />
+               <View style={[
+                  styles.inputContainer, 
+                  focusedInput === 'password' && { borderColor: '#6366F1', backgroundColor: '#fff' }
+                ]}>
+                  <Ionicons 
+                    name="lock-closed-outline" 
+                    size={22} 
+                    color={focusedInput === 'password' ? '#6366F1' : '#94A3B8'} 
+                    style={styles.inputIcon} 
+                  />
                   <TextInput
-                    placeholder="Enter Password"
-                    placeholderTextColor={colors.textTertiary}
+                    placeholder="Password"
+                    placeholderTextColor="#94A3B8"
                     value={password}
                     onChangeText={setPassword}
+                    onFocus={() => setFocusedInput('password')}
+                    onBlur={() => setFocusedInput(null)}
                     secureTextEntry={!showPassword}
                     style={styles.textInput}
-                    selectionColor={colors.primary}
+                    selectionColor="#6366F1"
                   />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                      <Ionicons 
                         name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                        size={20} 
-                        color={colors.textTertiary} 
+                        size={22} 
+                        color="#94A3B8" 
                      />
                   </TouchableOpacity>
                </View>
@@ -184,7 +211,7 @@ const LoginScreen = () => {
                    <ActivityIndicator color="#fff" />
                  ) : (
                    <>
-                     <Text style={styles.loginBtnText}>Secure Sign In</Text>
+                     <Text style={styles.loginBtnText}>Sign In to Portal</Text>
                      <Ionicons name="arrow-forward" size={20} color="#fff" />
                    </>
                  )}
@@ -210,32 +237,52 @@ const LoginScreen = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
                <View style={styles.modalIconBg}>
-                  <Ionicons name="help-circle-outline" size={28} color={colors.primary} />
+                  <Ionicons name="help-circle-outline" size={32} color="#6366F1" />
                </View>
                <Text style={styles.modalTitle}>Reset Password</Text>
-               <Text style={styles.modalSubtitle}>Enter your Employee Code or Email to receive a reset link.</Text>
+               <Text style={styles.modalSubtitle}>Enter your Employee Code and the new secure password you wish to set.</Text>
             </View>
 
             <View style={styles.modalBody}>
-               <View style={styles.modalInputContainer}>
-                  <Ionicons name="person-outline" size={20} color={colors.textTertiary} style={styles.inputIcon} />
+               <View style={[
+                  styles.modalInputContainer,
+                  focusedInput === 'forgotCode' && { borderColor: '#6366F1', backgroundColor: '#fff' }
+               ]}>
+                  <Ionicons 
+                    name="person-outline" 
+                    size={22} 
+                    color={focusedInput === 'forgotCode' ? '#6366F1' : '#94A3B8'} 
+                    style={styles.inputIcon} 
+                  />
                   <TextInput
-                    placeholder="Employee Code (e.g. IA001)"
-                    placeholderTextColor={colors.textTertiary}
+                    placeholder="Employee Code"
+                    placeholderTextColor="#94A3B8"
                     value={forgotEmail}
                     onChangeText={setForgotEmail}
+                    onFocus={() => setFocusedInput('forgotCode')}
+                    onBlur={() => setFocusedInput(null)}
                     style={styles.modalInput}
                     autoCapitalize="characters"
                   />
                </View>
 
-               <View style={styles.modalInputContainer}>
-                  <Ionicons name="lock-closed-outline" size={20} color={colors.textTertiary} style={styles.inputIcon} />
+               <View style={[
+                  styles.modalInputContainer,
+                  focusedInput === 'forgotPass' && { borderColor: '#6366F1', backgroundColor: '#fff' }
+               ]}>
+                  <Ionicons 
+                    name="lock-closed-outline" 
+                    size={22} 
+                    color={focusedInput === 'forgotPass' ? '#6366F1' : '#94A3B8'} 
+                    style={styles.inputIcon} 
+                  />
                   <TextInput
                     placeholder="New Secure Password"
-                    placeholderTextColor={colors.textTertiary}
+                    placeholderTextColor="#94A3B8"
                     value={password}
                     onChangeText={setPassword}
+                    onFocus={() => setFocusedInput('forgotPass')}
+                    onBlur={() => setFocusedInput(null)}
                     secureTextEntry
                     style={styles.modalInput}
                   />
@@ -249,8 +296,14 @@ const LoginScreen = () => {
                   <LinearGradient
                     colors={colors.gradients.primary}
                     style={styles.modalBtnGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
                   >
-                    {forgotLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalBtnText}>Request Reset Link</Text>}
+                    {forgotLoading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.modalBtnText}>Reset Password</Text>
+                    )}
                   </LinearGradient>
                </TouchableOpacity>
 
@@ -270,78 +323,118 @@ const LoginScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   keyboardView: { flex: 1 },
   scrollContent: { flexGrow: 1, padding: 24, paddingBottom: 60, justifyContent: 'center' },
   
-  header: { alignItems: 'center', marginBottom: 50 },
-  logoCircle: { 
-    width: 90, height: 90, borderRadius: 45, 
+  header: { alignItems: 'center', marginBottom: 40 },
+  logoContainer: { 
+    width: 110, height: 110, borderRadius: 30, 
     backgroundColor: '#fff', 
     justifyContent: 'center', alignItems: 'center',
     marginBottom: 20,
-    shadowColor: colors.primary, 
-    shadowOffset: { width: 0, height: 10 }, 
-    shadowOpacity: 0.2, 
-    shadowRadius: 15,
-    elevation: 8
+    shadowColor: '#6366F1', 
+    shadowOffset: { width: 0, height: 12 }, 
+    shadowOpacity: 0.15, 
+    shadowRadius: 20,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.1)'
   },
-  logoIcon: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center' },
-  brandName: { fontSize: 28, fontWeight: '900', color: '#1F2937', letterSpacing: -0.5 },
-  brandTagline: { fontSize: 13, fontWeight: '600', color: colors.textTertiary, marginTop: 4 },
+  logoImage: { width: 80, height: 80 },
+  brandName: { fontSize: 32, fontWeight: '900', color: '#1E293B', letterSpacing: -1 },
+  brandTagline: { fontSize: 14, fontWeight: '600', color: '#64748B', marginTop: 4 },
 
   formCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 32,
-    padding: 24,
+    borderRadius: 36,
+    padding: 28,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 15 },
-    shadowOpacity: 0.08,
-    shadowRadius: 30,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.06,
+    shadowRadius: 40,
+    elevation: 8,
     borderWidth: 1,
-    borderColor: '#F3F4F6'
+    borderColor: '#F1F5F9'
   },
-  formTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
-  formSubtitle: { fontSize: 13, fontWeight: '500', color: colors.textTertiary, marginTop: 4, marginBottom: 30 },
+  formTitle: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
+  formSubtitle: { fontSize: 14, fontWeight: '500', color: '#64748B', marginTop: 6, marginBottom: 32 },
 
-  inputGroup: { marginBottom: 20 },
-  inputLabel: { fontSize: 10, fontWeight: '900', color: colors.primary, letterSpacing: 1, marginBottom: 8 },
+  inputGroup: { marginBottom: 24 },
+  inputLabel: { fontSize: 11, fontWeight: '800', color: '#6366F1', letterSpacing: 1.2, marginBottom: 10, textTransform: 'uppercase' },
   inputContainer: { 
     flexDirection: 'row', alignItems: 'center', 
-    backgroundColor: '#F9FAFB', 
-    height: 56, borderRadius: 16, 
-    borderWidth: 1, borderColor: '#E5E7EB',
-    paddingHorizontal: 16
+    backgroundColor: '#F8FAFC', 
+    height: 62, borderRadius: 20, 
+    borderWidth: 1.5, borderColor: '#E2E8F0',
+    paddingHorizontal: 20
   },
-  inputIcon: { marginRight: 12 },
-  textInput: { flex: 1, color: '#111827', fontSize: 15, fontWeight: '600' },
+  inputIcon: { marginRight: 14 },
+  textInput: { flex: 1, color: '#0F172A', fontSize: 16, fontWeight: '600' },
   
-  forgotBtn: { alignSelf: 'flex-end', marginBottom: 30, marginTop: -8, padding: 4 },
-  forgotText: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  forgotBtn: { alignSelf: 'flex-end', marginBottom: 32, marginTop: -12, padding: 8 },
+  forgotText: { fontSize: 14, fontWeight: '700', color: '#6366F1' },
 
-  loginBtnContainer: { shadowColor: colors.primary, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 15, elevation: 8 },
-  loginBtn: { height: 60, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loginBtnText: { fontSize: 16, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  loginBtnContainer: { 
+    shadowColor: '#6366F1', 
+    shadowOffset: { width: 0, height: 10 }, 
+    shadowOpacity: 0.35, 
+    shadowRadius: 15, 
+    elevation: 10 
+  },
+  loginBtn: { 
+    height: 64, 
+    borderRadius: 22, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 12 
+  },
+  loginBtnText: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
 
   footer: { alignItems: 'center', marginTop: 40 },
-  footerText: { fontSize: 11, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 1 },
+  footerText: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1.5 },
 
   // Modal Styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalContent: { backgroundColor: '#fff', borderRadius: 32, padding: 32, width: '100%', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.2, shadowRadius: 40, elevation: 10 },
-  modalHeader: { alignItems: 'center', marginBottom: 24 },
-  modalIconBg: { width: 60, height: 60, borderRadius: 20, backgroundColor: colors.primary + '10', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#111827' },
-  modalSubtitle: { fontSize: 13, color: colors.textTertiary, textAlign: 'center', marginTop: 8, lineHeight: 20 },
-  modalBody: { gap: 16 },
-  modalInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', height: 56, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 16 },
-  modalInput: { flex: 1, color: '#111827', fontSize: 15, fontWeight: '600' },
-  modalActionBtn: { borderRadius: 16, overflow: 'hidden' },
-  modalBtnGradient: { height: 56, justifyContent: 'center', alignItems: 'center' },
-  modalBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  modalCancelBtn: { padding: 8, alignItems: 'center' },
-  modalCancelText: { color: colors.textTertiary, fontWeight: '700', fontSize: 14 }
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalContent: { 
+    backgroundColor: '#fff', 
+    borderRadius: 36, 
+    padding: 32, 
+    width: '100%', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 25 }, 
+    shadowOpacity: 0.2, 
+    shadowRadius: 50, 
+    elevation: 15 
+  },
+  modalHeader: { alignItems: 'center', marginBottom: 28 },
+  modalIconBg: { 
+    width: 64, height: 64, 
+    borderRadius: 22, 
+    backgroundColor: '#6366F115', 
+    justifyContent: 'center', alignItems: 'center', 
+    marginBottom: 20 
+  },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
+  modalSubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', marginTop: 10, lineHeight: 22 },
+  modalBody: { gap: 20 },
+  modalInputContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#F8FAFC', 
+    height: 62, 
+    borderRadius: 20, 
+    borderWidth: 1.5, 
+    borderColor: '#E2E8F0', 
+    paddingHorizontal: 20 
+  },
+  modalInput: { flex: 1, color: '#0F172A', fontSize: 16, fontWeight: '600' },
+  modalActionBtn: { borderRadius: 20, overflow: 'hidden' },
+  modalBtnGradient: { height: 62, justifyContent: 'center', alignItems: 'center' },
+  modalBtnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  modalCancelBtn: { padding: 10, alignItems: 'center' },
+  modalCancelText: { color: '#64748B', fontWeight: '700', fontSize: 15 }
 });
 
 export default LoginScreen;

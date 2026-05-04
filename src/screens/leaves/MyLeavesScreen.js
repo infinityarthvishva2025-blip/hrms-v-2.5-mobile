@@ -1,8 +1,16 @@
-import React, { useCallback, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  RefreshControl, 
+  TouchableOpacity, 
+  Dimensions,
+  StatusBar
+} from 'react-native';
 import { colors } from '../../constants/colors';
 import { useFetch } from '../../hooks/useFetch';
-import { useAuth } from '../../hooks/useAuth';
 import { getMyLeaves, cancelLeave } from '../../api/leave.api';
 import AppCard from '../../components/common/AppCard';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -11,34 +19,11 @@ import EmptyState from '../../components/common/EmptyState';
 import { formatDate } from '../../utils/dateUtils';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import PremiumHeader from '../../components/common/PremiumHeader';
-
+import { format } from 'date-fns';
 
 const { width } = Dimensions.get('window');
 
-const BalanceCard = ({ label, value, icon, color }) => (
-  <View style={styles.balanceCard}>
-    <LinearGradient
-      colors={[color + '15', colors.surface]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
-      style={StyleSheet.absoluteFill}
-    />
-
-    <View style={[styles.balanceAccent, { backgroundColor: color }]} />
-    <View style={styles.balanceHeader}>
-       <View style={[styles.balanceIconBg, { backgroundColor: color + '10' }]}>
-          <Ionicons name={icon} size={16} color={color} />
-       </View>
-       <Text style={styles.balanceLabel}>{label}</Text>
-    </View>
-    <Text style={styles.balanceValue}>{value ?? 0}</Text>
-  </View>
-);
-
 const MyLeavesScreen = ({ navigation }) => {
-  const { user } = useAuth();
   const { data, loading, execute: fetchLeaves } = useFetch(getMyLeaves, null);
   const [cancelLoading, setCancelLoading] = useState(null);
 
@@ -50,7 +35,7 @@ const MyLeavesScreen = ({ navigation }) => {
     try {
       setCancelLoading(id);
       await cancelLeave(id);
-      Toast.show({ type: 'success', text1: 'Leave Cancelled' });
+      Toast.show({ type: 'success', text1: 'Application Cancelled' });
       fetchLeaves();
     } catch (err) {
       Toast.show({ type: 'error', text1: 'Cancellation Failed' });
@@ -59,144 +44,143 @@ const MyLeavesScreen = ({ navigation }) => {
     }
   };
 
-  const balances = useMemo(() => [
-    { label: 'PAID', value: user?.paidLeaveBalance, icon: 'checkmark-circle', color: colors.gradients.secondary[0] },
-    { label: 'COMP-OFF', value: user?.compOffBalance, icon: 'gift', color: colors.gradients.accent[0] },
-    { label: 'SICK', value: user?.sickLeaveBalance || 0, icon: 'medical', color: colors.error },
-    { label: 'UNPAID', value: user?.unpaidCount || 0, icon: 'alert-circle', color: colors.warning },
-  ], [user]);
+  const renderItem = ({ item }) => {
+    const startDate = new Date(item.startDate);
+    const endDate = new Date(item.endDate);
 
-  const renderItem = ({ item }) => (
-    <AppCard style={styles.card}>
-      <View style={styles.statusLine} />
-      <View style={styles.cardContent}>
-        <View style={styles.cardTop}>
-          <View>
-            <Text style={styles.typeText}>{item.leaveType} Leave</Text>
-            <Text style={styles.durationText}>
-              {item.totalDays} {item.totalDays === 1 ? 'Day' : 'Days'} 
-              {item.halfDay ? ` (${item.halfDayPeriod})` : ''}
-            </Text>
+    return (
+      <AppCard style={styles.card}>
+        <View style={styles.cardMain}>
+          <View style={styles.cardHeader}>
+            <View style={styles.typeWrapper}>
+               <View style={styles.iconCircle}>
+                  <Ionicons 
+                    name={item.leaveType === 'Sick' ? 'medical' : item.leaveType === 'Paid' ? 'cash' : 'calendar'} 
+                    size={20} 
+                    color={colors.primary} 
+                  />
+               </View>
+               <View>
+                 <Text style={styles.leaveTypeText}>{item.leaveType} Leave</Text>
+                 <Text style={styles.durationText}>
+                    {item.totalDays} {item.totalDays === 1 ? 'Day' : 'Days'} Request
+                 </Text>
+               </View>
+            </View>
+            <StatusBadge status={item.status || item.overallStatus} />
           </View>
-          <StatusBadge status={item.status} />
+
+          <View style={styles.divider} />
+          
+          <View style={styles.dateGrid}>
+            <View style={styles.dateItem}>
+              <Text style={styles.dateLabel}>FROM</Text>
+              <Text style={styles.dateValue}>{format(startDate, 'dd MMM, yyyy')}</Text>
+            </View>
+            <View style={styles.dateSeparator}>
+               <Ionicons name="ellipsis-horizontal" size={16} color={colors.border} />
+            </View>
+            <View style={styles.dateItem}>
+              <Text style={styles.dateLabel}>TO</Text>
+              <Text style={styles.dateValue}>{format(endDate, 'dd MMM, yyyy')}</Text>
+            </View>
+          </View>
+
+          {item.reason && (
+            <View style={styles.reasonBox}>
+               <Ionicons name="chatbox-ellipses-outline" size={14} color={colors.textTertiary} />
+               <Text style={styles.reasonText} numberOfLines={2}>{item.reason}</Text>
+            </View>
+          )}
+          
+          {(item.status === 'Pending' || item.overallStatus === 'Pending') && (
+            <TouchableOpacity 
+              style={styles.cancelBtn} 
+              onPress={() => handleCancel(item._id)}
+              disabled={!!cancelLoading}
+              activeOpacity={0.6}
+            >
+              <Ionicons name="close-circle-outline" size={16} color={colors.error} />
+              <Text style={styles.cancelBtnText}>{cancelLoading === item._id ? 'Processing...' : 'Cancel Request'}</Text>
+            </TouchableOpacity>
+          )}
         </View>
-
-        <View style={styles.divider} />
-        
-        <View style={styles.dateRow}>
-          <View style={styles.dateBlock}>
-            <Text style={styles.dateLabel}>FROM</Text>
-            <Text style={styles.dateValue}>{formatDate(item.startDate)}</Text>
-          </View>
-          <Ionicons name="arrow-forward" size={16} color={colors.textTertiary} />
-          <View style={styles.dateBlock}>
-            <Text style={styles.dateLabel}>TO</Text>
-            <Text style={styles.dateValue}>{formatDate(item.endDate)}</Text>
-          </View>
-        </View>
-
-        {item.reason && (
-          <View style={styles.reasonBox}>
-             <Text style={styles.reasonText} numberOfLines={2}>"{item.reason}"</Text>
-          </View>
-        )}
-        
-        {item.status === 'Pending' && (
-          <TouchableOpacity 
-            style={styles.cancelBtn} 
-            onPress={() => handleCancel(item._id)}
-            disabled={!!cancelLoading}
-          >
-            <Ionicons name="close-circle-outline" size={16} color={colors.error} />
-            <Text style={styles.cancelBtnText}>{cancelLoading === item._id ? 'Cancelling...' : 'Cancel Request'}</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </AppCard>
-  );
+      </AppCard>
+    );
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.content}>
+      <StatusBar barStyle="dark-content" />
+      {/* <View style={styles.header}>
+         <Text style={styles.title}>My Leaves</Text>
+         <Text style={styles.subtitle}>Track your leave applications and status</Text>
+      </View> */}
 
+      <View style={styles.listWrapper}>
+        {/* <View style={styles.sectionHeader}>
+           <Text style={styles.sectionTitle}>Application History</Text>
+           <View style={styles.sectionLine} />
+        </View> */}
 
-        {/* Balances Section */}
-        <View style={styles.balanceSection}>
-           <Text style={styles.sectionTitle}>Leave Entitlements</Text>
-           <ScrollView 
-             horizontal 
-             showsHorizontalScrollIndicator={false} 
-             contentContainerStyle={styles.balanceScroll}
-           >
-              {balances.map((b, idx) => <BalanceCard key={idx} {...b} />)}
-           </ScrollView>
-        </View>
-
-        {/* History List */}
-        <Text style={[styles.sectionTitle, { paddingHorizontal: 20 }]}>Request History</Text>
         {loading && !data ? (
-          <LoadingSpinner />
+          <View style={styles.center}>
+            <LoadingSpinner />
+          </View>
         ) : (
           <FlatList
             data={data?.leaves || []}
             keyExtractor={(item) => item._id}
             renderItem={renderItem}
-            contentContainerStyle={styles.listContainer}
-            refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} colors={[colors.gradients.secondary[0]]} />}
-            ListEmptyComponent={<EmptyState icon="umbrella-outline" title="No Leaves Found" message="Request your first leave from the Apply tab." />}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={colors.primary} />}
+            ListEmptyComponent={<EmptyState icon="document-text-outline" title="No History" message="You haven't applied for any leaves yet." />}
+            showsVerticalScrollIndicator={false}
           />
         )}
       </View>
+
+
+
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { flex: 1, paddingTop: 16 },
+  container: { flex: 1, backgroundColor: '#fff' },
+  header: { paddingHorizontal: 24, paddingTop: 20, marginBottom: 10 },
+  title: { fontSize: 28, fontWeight: '900', color: colors.text, letterSpacing: -0.8 },
+  subtitle: { fontSize: 14, color: colors.textTertiary, fontWeight: '600', marginTop: 4 },
   
-  balanceSection: { marginBottom: 24 },
-  sectionTitle: { fontSize: 13, fontWeight: '900', color: colors.textTertiary, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12, paddingHorizontal: 20 },
-  balanceScroll: { paddingHorizontal: 16, gap: 10 },
-  balanceCard: { 
-    width: (width - 48) / 2.5, 
-    backgroundColor: colors.surface, 
-    borderRadius: 20, 
-    padding: 14, 
-    elevation: 3, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.05, 
-    shadowRadius: 8,
-    position: 'relative',
-    overflow: 'hidden'
-  },
-  balanceAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
-  balanceHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  balanceIconBg: { width: 24, height: 24, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  balanceLabel: { fontSize: 9, fontWeight: '800', color: colors.textTertiary },
-  balanceValue: { fontSize: 20, fontWeight: '900', color: colors.text },
+  listWrapper: { flex: 1 },
+  sectionHeader: { paddingHorizontal: 24, marginTop: 20, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sectionTitle: { fontSize: 12, fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1 },
+  sectionLine: { flex: 1, height: 1, backgroundColor: '#F1F5F9' },
 
-  listContainer: { padding: 16, paddingBottom: 100 },
-  card: { marginBottom: 14, borderRadius: 24, padding: 0, overflow: 'hidden' },
-  statusLine: { height: 4, width: '100%', backgroundColor: colors.border, opacity: 0.5 },
-  cardContent: { padding: 20 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  typeText: { fontSize: 17, fontWeight: '800', color: colors.text },
-  durationText: { fontSize: 12, color: colors.textTertiary, fontWeight: '600', marginTop: 2 },
+  listContent: { paddingHorizontal: 24, paddingBottom: 60 },
+  card: { marginBottom: 20, borderRadius: 28, padding: 0, overflow: 'hidden', backgroundColor: '#fff', borderWidth: 1, borderColor: '#F1F5F9', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10 },
+  cardMain: { padding: 20 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  typeWrapper: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  iconCircle: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.primary + '10', justifyContent: 'center', alignItems: 'center' },
+  leaveTypeText: { fontSize: 17, fontWeight: '800', color: colors.text },
+  durationText: { fontSize: 12, color: colors.textTertiary, fontWeight: '700', marginTop: 2 },
   
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: 16, opacity: 0.6 },
+  divider: { height: 1, backgroundColor: '#F8FAFC', marginVertical: 18 },
   
-  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  dateBlock: { flex: 1 },
-  dateLabel: { fontSize: 9, fontWeight: '800', color: colors.textTertiary, marginBottom: 4 },
-  dateValue: { fontSize: 14, fontWeight: '700', color: colors.textSecondary },
+  dateGrid: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dateItem: { flex: 1 },
+  dateLabel: { fontSize: 9, fontWeight: '900', color: '#94A3B8', letterSpacing: 0.5, marginBottom: 6 },
+  dateValue: { fontSize: 14, fontWeight: '800', color: '#334155' },
+  dateSeparator: { width: 40, alignItems: 'center' },
   
-  reasonBox: { backgroundColor: colors.surfaceAlt, padding: 12, borderRadius: 14, marginTop: 16 },
-  reasonText: { fontSize: 13, color: colors.textSecondary, fontStyle: 'italic' },
+  reasonBox: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 16, marginTop: 18, flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  reasonText: { fontSize: 13, color: '#64748B', fontStyle: 'italic', lineHeight: 18, flex: 1 },
   
-  cancelBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border },
-  cancelBtnText: { color: colors.error, fontWeight: '700', fontSize: 13 },
+  cancelBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 18, paddingTop: 18, borderTopWidth: 1, borderTopColor: '#F8FAFC' },
+  cancelBtnText: { color: colors.error, fontWeight: '800', fontSize: 13 },
+  
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' }
 });
 
 export default MyLeavesScreen;
