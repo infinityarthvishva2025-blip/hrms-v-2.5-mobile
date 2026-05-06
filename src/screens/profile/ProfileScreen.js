@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors, roleColors } from '../../constants/colors';
 import { useAuth } from '../../hooks/useAuth';
 import Avatar from '../../components/common/Avatar';
@@ -58,6 +59,13 @@ const ProfileScreen = ({ navigation }) => {
   const [htmlContent, setHtmlContent] = React.useState('');
   const webviewRef = React.useRef(null);
 
+  // Auto-refresh profile when screen is focused to sync with Web changes
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshProfile();
+    }, [])
+  );
+
   // Load HTML securely for Android camera access
   React.useEffect(() => {
     const loadHtml = async () => {
@@ -100,7 +108,10 @@ const ProfileScreen = ({ navigation }) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === 'ready') {
-        // WebView is ready
+        webviewRef.current?.injectJavaScript(`
+          window.FACE_OP = 'register';
+          true;
+        `);
       } else if (msg.type === 'error') {
         Toast.show({ type: 'error', text1: 'Face Verification Error', text2: msg.error });
       } else if (msg.type === 'cancel') {
@@ -242,7 +253,7 @@ const ProfileScreen = ({ navigation }) => {
           onPress={handleLogout}
         >
           <Ionicons name="log-out-outline" size={22} color={colors.error} />
-          <Text style={styles.logoutText}>Terminate Portal Session</Text>
+          <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
         <View style={styles.legalBranding}>

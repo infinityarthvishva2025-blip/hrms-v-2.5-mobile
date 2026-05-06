@@ -19,7 +19,7 @@ const AttendanceTabs = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const pagerRef = useRef(null);
   const isAdmin = useMemo(() => isManagement(user?.role), [user]);
-  
+
   const [activeIndex, setActiveIndex] = useState(0);
 
   const tabs = useMemo(() => {
@@ -60,7 +60,7 @@ const AttendanceTabs = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
+
       <View style={[styles.masterHeader, { paddingTop: insets.top + 4 }]}>
         <LinearGradient
           colors={colors.gradients.primary}
@@ -70,33 +70,34 @@ const AttendanceTabs = ({ navigation }) => {
         />
 
         <View style={styles.headerTop}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => {}}
+            onPress={() => { }}
           >
             <Ionicons name="menu-outline" size={20} color="#fff" />
           </TouchableOpacity>
           <View style={styles.headerTitleCenter}>
             <View style={styles.moduleBadge}>
-               <Text style={styles.moduleBadgeText}>ATTENDANCE</Text>
+              <Text style={styles.moduleBadgeText}>ATTENDANCE</Text>
             </View>
           </View>
+
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.headerBtn} onPress={() => {}}>
+            <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate('MenuTab', { screen: 'Announcements' })} >
               <Ionicons name="notifications-outline" size={18} color="#fff" />
             </TouchableOpacity>
-            <Avatar 
-              name={user?.name} 
-              url={user?.profileImageUrl} 
-              size={26} 
-              style={styles.headerAvatar} 
+            <Avatar
+              name={user?.name}
+              url={user?.profileImageUrl}
+              size={26}
+              style={styles.headerAvatar}
             />
           </View>
         </View>
 
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabBarContent}
         >
           {tabs.map((tab, index) => {
@@ -108,10 +109,10 @@ const AttendanceTabs = ({ navigation }) => {
                 style={[styles.tabItem, isActive && styles.activeTabItem]}
                 activeOpacity={0.8}
               >
-                <Ionicons 
-                  name={tab.icon} 
-                  size={14} 
-                  color={isActive ? '#fff' : 'rgba(255,255,255,0.6)'} 
+                <Ionicons
+                  name={tab.icon}
+                  size={14}
+                  color={isActive ? '#fff' : 'rgba(255,255,255,0.6)'}
                 />
                 <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
                   {tab.label}
@@ -123,9 +124,9 @@ const AttendanceTabs = ({ navigation }) => {
         </ScrollView>
       </View>
 
-      <PagerView 
+      <PagerView
         ref={pagerRef}
-        style={styles.content} 
+        style={styles.content}
         initialPage={0}
         onPageSelected={onPageSelected}
       >
@@ -141,7 +142,7 @@ const AttendanceTabs = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  masterHeader: { 
+  masterHeader: {
     backgroundColor: colors.primary,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -158,10 +159,10 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   headerTitleCenter: { alignItems: 'center' },
-  moduleBadge: { 
-    backgroundColor: 'rgba(255,255,255,0.15)', 
-    paddingHorizontal: 8, 
-    paddingVertical: 2, 
+  moduleBadge: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     borderRadius: 6,
     marginTop: 2,
   },
@@ -169,7 +170,7 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerBtn: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   headerAvatar: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
-  
+
   tabBarContent: { paddingHorizontal: 16, height: 48, alignItems: 'center' },
   tabItem: {
     flexDirection: 'row',

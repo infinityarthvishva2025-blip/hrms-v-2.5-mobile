@@ -190,7 +190,7 @@ const MenuScreen = ({ navigation }) => {
           <View style={styles.logoutIconBg}>
             <Ionicons name="log-out-outline" size={22} color={colors.error} />
           </View>
-          <Text style={styles.logoutText}>Terminate Session</Text>
+          <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
 
         <View style={styles.legalFooter}>

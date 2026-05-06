@@ -79,7 +79,7 @@ const LeaveTabs = ({ navigation }) => {
             </View>
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.headerBtn} onPress={() => {}}>
+            <TouchableOpacity style={styles.headerBtn}   onPress={() => navigation.navigate('MenuTab', { screen: 'Announcements' })}>
               <Ionicons name="notifications-outline" size={18} color="#fff" />
             </TouchableOpacity>
             <Avatar 

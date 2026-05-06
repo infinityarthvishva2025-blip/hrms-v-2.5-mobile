@@ -4,12 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { useFetch } from '../../hooks/useFetch';
 import { getVideoById, getSectionsByVideo } from '../../api/gurukul.api';
-import PageHeader from '../../components/common/PageHeader';
+import PremiumHeader from '../../components/common/PremiumHeader';
+import { useAuth } from '../../hooks/useAuth';
 import AppCard from '../../components/common/AppCard';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Image } from 'expo-image';
 
 const VideoDetailScreen = ({ route, navigation }) => {
+  const { user } = useAuth();
   const { videoId, title } = route.params;
 
   const { data: video, loading: videoLoading } = useFetch(() => getVideoById(videoId), null);
@@ -21,7 +23,13 @@ const VideoDetailScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <PageHeader title={title || 'Video'} showBack onBack={() => navigation.goBack()} />
+      <PremiumHeader 
+        title={title || 'Video'} 
+        moduleBadge="LEARNING" 
+        showBack={true} 
+        user={user} 
+        navigation={navigation} 
+      />
       <ScrollView contentContainerStyle={styles.content}>
 
         {/* Video thumbnail / preview */}

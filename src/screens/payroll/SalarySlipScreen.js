@@ -12,7 +12,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import config from '../../constants/config';
-import PageHeader from '../../components/common/PageHeader';
+import PremiumHeader from '../../components/common/PremiumHeader';
+import { useAuth } from '../../hooks/useAuth';
 import AppCard from '../../components/common/AppCard';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import * as Sharing from 'expo-sharing';
@@ -40,6 +41,7 @@ const DetailRow = ({ label, value, isNegative = false, isTotal = false }) => (
 );
 
 const SalarySlipScreen = ({ route, navigation }) => {
+  const { user } = useAuth();
   const { slip } = route.params;
   const [downloading, setDownloading] = useState(false);
 
@@ -76,7 +78,13 @@ const SalarySlipScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <PageHeader title="Salary Statement" showBack onBack={() => navigation.goBack()} />
+      <PremiumHeader 
+        title="Salary Slip" 
+        moduleBadge="PAYROLL" 
+        showBack={true} 
+        user={user} 
+        navigation={navigation} 
+      />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
         {/* Header Summary */}

@@ -17,7 +17,8 @@ import { colors } from '../../constants/colors';
 import { useFetch } from '../../hooks/useFetch';
 import { getPayrollList, generatePayroll, generateAllPayroll } from '../../api/payroll.api';
 import { getEmployees } from '../../api/employee.api';
-import PageHeader from '../../components/common/PageHeader';
+import PremiumHeader from '../../components/common/PremiumHeader';
+import { useAuth } from '../../hooks/useAuth';
 import AppCard from '../../components/common/AppCard';
 import Avatar from '../../components/common/Avatar';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -40,6 +41,7 @@ const getDefaultRange = () => {
 };
 
 const PayrollDashboard = ({ navigation }) => {
+  const { user } = useAuth();
   const [dateRange, setDateRange] = useState(getDefaultRange());
   const [searchTerm, setSearchTerm] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
@@ -184,7 +186,13 @@ const PayrollDashboard = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <PageHeader title="Payroll Engine" showBack={false} />
+      <PremiumHeader 
+        title="Payroll Engine" 
+        moduleBadge="MANAGEMENT" 
+        showBack={true} 
+        user={user} 
+        navigation={navigation} 
+      />
       
       <View style={styles.controls}>
         <View style={styles.searchBar}>

@@ -444,6 +444,19 @@ async function capture() {
       return;
     }
 
+    if (window.FACE_OP === 'checkin' || window.FACE_OP === 'checkout') {
+      if (!window.USER_FACE_DESCRIPTOR || window.USER_FACE_DESCRIPTOR.length === 0) {
+        handleFailure('Face ID not registered. Please register in Profile.');
+        return;
+      }
+      const registeredDesc = new Float32Array(Object.values(window.USER_FACE_DESCRIPTOR));
+      const dist = faceapi.euclideanDistance(det.descriptor, registeredDesc);
+      if (dist > 0.50) {
+        handleFailure('Face ID does not match. Please try again.');
+        return;
+      }
+    }
+
     const score = Math.round(det.detection.score * 100);
 
     // Capture frame as base64

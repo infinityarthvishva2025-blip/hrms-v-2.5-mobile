@@ -19,6 +19,7 @@ import { useAuth } from '../../hooks/useAuth';
 import AppCard from '../../components/common/AppCard';
 import AppDateTimePicker from '../../components/common/AppDateTimePicker';
 import { LinearGradient } from 'expo-linear-gradient';
+import PremiumHeader from '../../components/common/PremiumHeader';
 
 const { width } = Dimensions.get('window');
 
@@ -80,16 +81,13 @@ const CorrectionRequestScreen = ({ route, navigation }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.container}>
-        {/* Custom Header - Minimalist & Integrated */}
-        <View style={styles.header}>
-           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={24} color={colors.text} />
-           </TouchableOpacity>
-           <View>
-              <Text style={styles.headerTitle}>Correction Request</Text>
-              <Text style={styles.headerSubtitle}>Refining attendance for {new Date(record.date).toLocaleDateString()}</Text>
-           </View>
-        </View>
+        <PremiumHeader 
+          title="Correction Request" 
+          moduleBadge="ATTENDANCE" 
+          showBack={true} 
+          user={user} 
+          navigation={navigation} 
+        />
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           
@@ -195,19 +193,7 @@ const CorrectionRequestScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 20, 
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    gap: 16
-  },
-  backBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B', letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginTop: 2 },
+  scrollContent: { padding: 20 },
   
   scrollContent: { padding: 20 },
   

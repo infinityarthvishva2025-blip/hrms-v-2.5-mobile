@@ -13,7 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { useFetch } from '../../hooks/useFetch';
 import { getPayrollList } from '../../api/payroll.api';
-import PageHeader from '../../components/common/PageHeader';
+import PremiumHeader from '../../components/common/PremiumHeader';
+import { useAuth } from '../../hooks/useAuth';
 import AppCard from '../../components/common/AppCard';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
@@ -21,6 +22,7 @@ import EmptyState from '../../components/common/EmptyState';
 const { width } = Dimensions.get('window');
 
 const PayrollScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth() - 6, 21).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
@@ -90,7 +92,13 @@ const PayrollScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <PageHeader title="My Pay Slips" showBack={false} />
+      <PremiumHeader 
+        title="My Pay Slips" 
+        moduleBadge="PAYROLL" 
+        showBack={true} 
+        user={user} 
+        navigation={navigation} 
+      />
       
       <View style={styles.filterBar}>
          <View style={styles.dateControl}>

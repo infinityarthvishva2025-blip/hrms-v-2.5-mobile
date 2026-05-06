@@ -9,8 +9,11 @@ import { getMyAnnouncements, markAsRead } from '../../api/announcement.api';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import { formatDate } from '../../utils/dateUtils';
+import { useAuth } from '../../hooks/useAuth';
+import PremiumHeader from '../../components/common/PremiumHeader';
 
 const AnnouncementScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { data, loading, execute: fetchAnnouncements, setData } = useFetch(getMyAnnouncements, null);
   const announcements = Array.isArray(data) ? data : (data?.announcements || []);
@@ -85,22 +88,13 @@ const AnnouncementScreen = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-      {/* Module Master Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <LinearGradient
-          colors={colors.gradients.primary}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-        />
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-            <Ionicons name="arrow-back" size={26} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Announcements</Text>
-          <View style={styles.headerBtn} />
-        </View>
-      </View>
+      <PremiumHeader 
+        title="Announcements" 
+        moduleBadge="COMMUNICATION" 
+        showBack={true} 
+        user={user} 
+        navigation={navigation} 
+      />
 
       {loading && !data ? (
         <LoadingSpinner />
@@ -126,12 +120,7 @@ const AnnouncementScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  header: { 
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8, zIndex: 100,
-  },
-  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 15 },
-  headerBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '900', color: '#fff', letterSpacing: 1 },
+  container: { flex: 1, backgroundColor: colors.background },
   
   list: { padding: 16, paddingBottom: 100 },
   

@@ -216,7 +216,7 @@ const ApplyLeaveScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   scrollContent: { padding: 20 },
   headerCard: { borderRadius: 32, padding: 24, marginBottom: 24, backgroundColor: '#fff', elevation: 4 },
-  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 40 },
   headerLabel: { fontSize: 10, fontWeight: '900', color: colors.textTertiary, letterSpacing: 1.5, marginBottom: 4 },
   headerTitle: { fontSize: 24, fontWeight: '900', color: colors.text },
   headerIconBg: { width: 56, height: 56, borderRadius: 18, backgroundColor: colors.primary + '10', justifyContent: 'center', alignItems: 'center' },
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   textArea: { fontSize: 15, fontWeight: '600', color: colors.text, height: '100%' },
 
   submitContainer: { marginTop: 10, shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 6 },
-  submitBtn: { height: 60, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
+  submitBtn: { height: 60, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 19 , marginBottom: 60 },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
   submitDisabled: { opacity: 0.7, elevation: 0 }
 });

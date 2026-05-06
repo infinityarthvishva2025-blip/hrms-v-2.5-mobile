@@ -4,13 +4,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { useFetch } from '../../hooks/useFetch';
 import { getAllVideos } from '../../api/gurukul.api';
-import PageHeader from '../../components/common/PageHeader';
+import PremiumHeader from '../../components/common/PremiumHeader';
+import { useAuth } from '../../hooks/useAuth';
 import AppCard from '../../components/common/AppCard';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import { Image } from 'expo-image';
 
 const GurukulScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const { data, loading, execute: fetchVideos } = useFetch(getAllVideos, null);
   const videos = Array.isArray(data) ? data : (data?.videos || []);
 
@@ -48,7 +50,13 @@ const GurukulScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <PageHeader title="Gurukul" subtitle="Learning Center" showBack={false} />
+      <PremiumHeader 
+        title="Gurukul" 
+        moduleBadge="LEARNING" 
+        showBack={true} 
+        user={user} 
+        navigation={navigation} 
+      />
       {loading && !data ? (
         <LoadingSpinner />
       ) : (

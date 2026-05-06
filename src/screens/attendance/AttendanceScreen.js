@@ -17,7 +17,11 @@ import { colors } from '../../constants/colors';
 import { getTodayStatus, checkIn, checkOut, trackLocation } from '../../api/attendance.api';
 import { getManagementEmployees } from '../../api/employee.api';
 import AppCard from '../../components/common/AppCard';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  Ionicons,
+  MaterialCommunityIcons
+} from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { calculateDistance } from '../../utils/geoUtils';
 import Toast from 'react-native-toast-message';
@@ -36,16 +40,7 @@ const BYPASS_LAT = 18.534202;
 const BYPASS_LNG = 73.839556;
 const BYPASS_CODE = 'IA00117';
 
-// Helper to calculate Euclidean distance between two face descriptors
-const euclideanDistance = (desc1, desc2) => {
-  if (!desc1 || !desc2 || desc1.length !== desc2.length) return Infinity;
-  let sum = 0;
-  for (let i = 0; i < desc1.length; i++) {
-    const diff = desc1[i] - desc2[i];
-    sum += diff * diff;
-  }
-  return Math.sqrt(sum);
-};
+// Helper removed as verification is handled inside WebView
 
 const AttendanceScreen = ({ navigation }) => {
   const { user, refreshProfile } = useAuth();
@@ -55,6 +50,14 @@ const AttendanceScreen = ({ navigation }) => {
   const [officeSettings, setOfficeSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [htmlContent, setHtmlContent] = useState('');
+
+  // Sync profile when entering screen to catch Web registrations
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshProfile();
+    }, [])
+  );
 
   // Geo state
   const [geoStatus, setGeoStatus] = useState('checking'); // checking, valid, invalid, error, permission_denied
@@ -72,7 +75,6 @@ const AttendanceScreen = ({ navigation }) => {
 
   const [showFaceModal, setShowFaceModal] = useState(false);
   const [faceOp, setFaceOp] = useState(null); // 'checkin' or 'checkout'
-  const [htmlContent, setHtmlContent] = useState('');
   const webviewRef = useRef(null);
   const faceOpRef = useRef(null); // 'checkin' or 'checkout'
 
@@ -129,7 +131,7 @@ const AttendanceScreen = ({ navigation }) => {
     try {
       const { data } = await getManagementEmployees();
       setManagementEmps(data.data || []);
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const verifyLocation = async (office) => {
@@ -255,37 +257,26 @@ const AttendanceScreen = ({ navigation }) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === 'ready') {
-        // WebView is ready
+        webviewRef.current?.injectJavaScript(`
+          window.USER_FACE_DESCRIPTOR = ${JSON.stringify(user.faceDescriptor || [])};
+          window.FACE_OP = '${faceOpRef.current}';
+          true;
+        `);
       } else if (msg.type === 'error') {
         Toast.show({ type: 'error', text1: 'Face Verification Error', text2: msg.error });
       } else if (msg.type === 'cancel') {
         setShowFaceModal(false);
       } else if (msg.type === 'descriptor') {
-        const desc = msg.descriptor;
-        if (!user.faceDescriptor) {
-          Toast.show({ type: 'error', text1: 'Face ID Required', text2: 'No Face ID registered.' });
-          setShowFaceModal(false);
-          return;
-        }
+        // Success
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Toast.show({ type: 'success', text1: 'Identity Verified ✓' });
+        setShowFaceModal(false);
 
-        const distance = euclideanDistance(desc, user.faceDescriptor);
-        if (distance <= 0.6) {
-          // Success
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          Toast.show({ type: 'success', text1: 'Identity Verified ✓' });
-          setShowFaceModal(false);
-          
-          const op = faceOpRef.current;
-          if (op === 'checkin') {
-            proceedCheckIn();
-          } else if (op === 'checkout') {
-            setShowReportModal(true);
-          }
-        } else {
-          // Fail
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          Toast.show({ type: 'error', text1: 'Verification Failed', text2: 'Face mismatch. Please try again.' });
-          // The webview should have a retry button, but we can close it or let user tap retry inside webview
+        const op = faceOpRef.current;
+        if (op === 'checkin') {
+          proceedCheckIn();
+        } else if (op === 'checkout') {
+          setShowReportModal(true);
         }
       }
     } catch (err) {
@@ -337,7 +328,7 @@ const AttendanceScreen = ({ navigation }) => {
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
+
       const { overtimeMinutes, shortfallMinutes } = data.data;
       if (overtimeMinutes > 0) Toast.show({ type: 'success', text1: 'Success', text2: `Checked out! Overtime: ${overtimeMinutes}m` });
       else if (shortfallMinutes > 0) Toast.show({ type: 'info', text1: 'Early Checkout', text2: `Checked out ${shortfallMinutes}m early` });
@@ -436,7 +427,7 @@ const AttendanceScreen = ({ navigation }) => {
           {renderGeoStatus()}
           {!isBypassUser && currentWorkMode === 'Office' && (
             <TouchableOpacity onPress={() => verifyLocation(officeSettings)} style={{ padding: 8 }}>
-               <Ionicons name="refresh" size={18} color={colors.textTertiary} />
+              <Ionicons name="refresh" size={18} color={colors.textTertiary} />
             </TouchableOpacity>
           )}
         </View>
@@ -515,13 +506,13 @@ const AttendanceScreen = ({ navigation }) => {
                       activeOpacity={0.8}
                     >
                       <LinearGradient
-                         colors={canAct ? ['#fff', 'rgba(255,255,255,0.9)'] : ['rgba(255,255,255,0.4)', 'rgba(255,255,255,0.3)']}
-                         style={styles.actionBtnGradient}
+                        colors={canAct ? ['#fff', 'rgba(255,255,255,0.9)'] : ['rgba(255,255,255,0.4)', 'rgba(255,255,255,0.3)']}
+                        style={styles.actionBtnGradient}
                       >
                         {actionLoading ? <ActivityIndicator color={colors.primary} /> : (
                           <>
                             <Ionicons name="flash" size={20} color={canAct ? colors.primary : '#fff'} />
-                            <Text style={[styles.actionBtnText, { color: canAct ? colors.primary : '#fff' }]}>START SHIFT</Text>
+                            <Text style={[styles.actionBtnText, { color: canAct ? colors.primary : '#fff' }]}>GEO CHECK IN </Text>
                           </>
                         )}
                       </LinearGradient>
@@ -535,13 +526,13 @@ const AttendanceScreen = ({ navigation }) => {
                     activeOpacity={0.8}
                   >
                     <LinearGradient
-                       colors={canAct ? ['#EF4444', '#DC2626'] : ['#94a3b8', '#64748b']}
-                       style={styles.actionBtnGradient}
+                      colors={canAct ? ['#EF4444', '#DC2626'] : ['#94a3b8', '#64748b']}
+                      style={styles.actionBtnGradient}
                     >
                       {actionLoading ? <ActivityIndicator color="#fff" /> : (
                         <>
                           <Ionicons name="log-out" size={20} color="#fff" />
-                          <Text style={[styles.actionBtnText, { color: '#fff' }]}>END SHIFT</Text>
+                          <Text style={[styles.actionBtnText, { color: '#fff' }]}>GEO CHECK OUT</Text>
                         </>
                       )}
                     </LinearGradient>
@@ -557,39 +548,48 @@ const AttendanceScreen = ({ navigation }) => {
           </LinearGradient>
         </View>
 
+
+        {/* Disclaimer */}
+        <View style={styles.disclaimerContainer}>
+          <Text style={styles.disclaimerText}>
+            ⚠️ Disclaimer: Your live location is being captured for attendance purposes.
+            Please do not use camera photos or fake location methods.
+          </Text>
+        </View>
+
         {/* Metrics Grid */}
         <Text style={styles.sectionTitle}>Shift Metrics</Text>
         <View style={styles.metricsGrid}>
           <AppCard style={styles.metricItem}>
-            <MiniMetric 
-              label="Clock In" 
-              value={todayRecord?.inTime ? format(new Date(todayRecord.inTime), 'hh:mm a') : '--:--'} 
-              icon="enter-outline" 
-              color={colors.success} 
+            <MiniMetric
+              label="Clock In"
+              value={todayRecord?.inTime ? format(new Date(todayRecord.inTime), 'hh:mm a') : '--:--'}
+              icon="enter-outline"
+              color={colors.success}
             />
           </AppCard>
           <AppCard style={styles.metricItem}>
-            <MiniMetric 
-              label="Clock Out" 
-              value={todayRecord?.outTime ? format(new Date(todayRecord.outTime), 'hh:mm a') : '--:--'} 
-              icon="exit-outline" 
-              color={colors.primary} 
+            <MiniMetric
+              label="Clock Out"
+              value={todayRecord?.outTime ? format(new Date(todayRecord.outTime), 'hh:mm a') : '--:--'}
+              icon="exit-outline"
+              color={colors.primary}
             />
           </AppCard>
           <AppCard style={styles.metricItem}>
-            <MiniMetric 
-              label="Worked" 
-              value={todayRecord?.totalHours ? todayRecord.totalHours.toFixed(1) + 'h' : '0.0h'} 
-              icon="time-outline" 
-              color={colors.warning} 
+            <MiniMetric
+              label="Worked"
+              value={todayRecord?.totalHours ? todayRecord.totalHours.toFixed(1) + 'h' : '0.0h'}
+              icon="time-outline"
+              color={colors.warning}
             />
           </AppCard>
           <AppCard style={styles.metricItem}>
-            <MiniMetric 
-              label="Status" 
-              value={isCheckedIn ? (isCheckedOut ? 'DONE' : 'ON-GOING') : 'ABSENT'} 
-              icon="analytics-outline" 
-              color={colors.gradients.secondary[0]} 
+            <MiniMetric
+              label="Status"
+              value={isCheckedIn ? (isCheckedOut ? 'DONE' : 'ON-GOING') : 'ABSENT'}
+              icon="analytics-outline"
+              color={colors.gradients.secondary[0]}
             />
           </AppCard>
         </View>
@@ -605,7 +605,7 @@ const AttendanceScreen = ({ navigation }) => {
             </View>
           </AppCard>
         )}
-        
+
         <View style={{ height: 60 }} />
       </ScrollView>
 
@@ -727,7 +727,7 @@ const AttendanceScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollContainer: { padding: 20, paddingTop: 16 },
-  
+
   statusSection: { marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   geoPill: {
     flexDirection: 'row',
@@ -740,7 +740,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   geoText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
-  
+
   heroContainer: { marginBottom: 28 },
   heroCard: {
     minHeight: 340,
@@ -759,7 +759,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   heroContent: { flex: 1, justifyContent: 'space-between', zIndex: 2 },
-  
+
   activeSession: { alignItems: 'center', marginTop: 10 },
   glassTimer: {
     backgroundColor: 'rgba(255,255,255,0.12)',
@@ -787,12 +787,12 @@ const styles = StyleSheet.create({
     borderRadius: 2
   },
   shiftTarget: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 14, fontWeight: '800', letterSpacing: 0.5 },
-  
+
   idleSession: { alignItems: 'center', marginTop: 10 },
   idleIconBg: { width: 72, height: 72, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   idleTitle: { fontSize: 24, fontWeight: '900', color: '#fff', marginBottom: 6, letterSpacing: -0.5 },
   idleSub: { fontSize: 14, color: 'rgba(255,255,255,0.5)', textAlign: 'center', maxWidth: 220, lineHeight: 20 },
-  
+
   doneSession: { alignItems: 'center', marginTop: 20 },
   doneIconBg: { width: 84, height: 84, borderRadius: 42, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   doneTitle: { fontSize: 24, fontWeight: '900', color: '#fff', marginBottom: 8 },
@@ -809,7 +809,7 @@ const styles = StyleSheet.create({
   actionBtnDisabled: { opacity: 0.8 },
   actionBtnGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   actionBtnText: { fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
-  
+
   completedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.1)', paddingVertical: 12, borderRadius: 16 },
   completedBadgeText: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.7)', letterSpacing: 1 },
 
@@ -820,7 +820,7 @@ const styles = StyleSheet.create({
   miniMetricIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   miniMetricLabel: { fontSize: 10, fontWeight: '800', color: colors.textTertiary, textTransform: 'uppercase', marginBottom: 2, letterSpacing: 0.5 },
   miniMetricValue: { fontSize: 15, fontWeight: '900', color: colors.text },
-  
+
   lateNotice: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18, borderRadius: 24, marginTop: 20, backgroundColor: colors.warning + '08', borderLeftWidth: 4, borderLeftColor: colors.warning },
   lateIconBg: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.warning + '15', justifyContent: 'center', alignItems: 'center' },
   lateTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
@@ -856,6 +856,25 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.border,
   },
+  disclaimerContainer: {
+  backgroundColor: '#FFF3CD',
+  borderLeftWidth: 4,
+  borderLeftColor: '#FFC107',
+  padding: 10,
+  marginBottom: 12,
+  borderRadius: 8,
+},
+
+disclaimerText: {
+  fontSize: 12,
+  color: '#856404',
+  lineHeight: 18,
+},
+
+
+
+
+
   selectedPill: { backgroundColor: colors.primary, borderColor: colors.primary },
   participantText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   submitBtn: {

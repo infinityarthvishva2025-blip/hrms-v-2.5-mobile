@@ -15,7 +15,10 @@ const EmployeeTabs = ({ navigation }) => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const pagerRef = useRef(null);
-  const isAdmin = useMemo(() => isManagement(user?.role), [user]);
+  
+  const canAddEmployee = useMemo(() => {
+    return isManagement(user?.role) && user?.role !== 'Manager';
+  }, [user]);
   
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -23,13 +26,13 @@ const EmployeeTabs = ({ navigation }) => {
     const baseTabs = [
       { id: 'directory', label: 'Directory', icon: 'people-outline' },
     ];
-    if (isAdmin) {
+    if (canAddEmployee) {
       baseTabs.push(
         { id: 'add', label: 'Add Employee', icon: 'person-add-outline' }
       );
     }
     return baseTabs;
-  }, [isAdmin]);
+  }, [canAddEmployee]);
 
   const onTabPress = (index) => {
     setActiveIndex(index);
@@ -74,7 +77,7 @@ const EmployeeTabs = ({ navigation }) => {
             </View>
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.headerBtn}>
+            <TouchableOpacity style={styles.headerBtn}   onPress={() => navigation.navigate('MenuTab', { screen: 'Announcements' })}>
               <Ionicons name="notifications-outline" size={18} color="#fff" />
             </TouchableOpacity>
             <Avatar 
