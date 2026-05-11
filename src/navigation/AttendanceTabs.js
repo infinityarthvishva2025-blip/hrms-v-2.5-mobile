@@ -29,7 +29,7 @@ const AttendanceTabs = ({ navigation }) => {
     ];
     if (isAdmin) {
       baseTabs.push(
-        { id: 'team', label: 'Team', icon: 'people-outline' },
+        // { id: 'team', label: 'Team', icon: 'people-outline' },
         { id: 'approvals', label: 'Approvals', icon: 'checkmark-circle-outline' },
         { id: 'reports', label: 'Reports', icon: 'document-text-outline' }
       );
@@ -50,7 +50,7 @@ const AttendanceTabs = ({ navigation }) => {
     switch (tabId) {
       case 'attendance': return <AttendanceScreen navigation={navigation} />;
       case 'summary': return <AttendanceSummaryScreen navigation={navigation} />;
-      case 'team': return <AdminAttendance navigation={navigation} />;
+      // case 'team': return <AdminAttendance navigation={navigation} />;
       case 'approvals': return <CorrectionApproval navigation={navigation} />;
       case 'reports': return <DailyReportsScreen navigation={navigation} />;
       default: return null;

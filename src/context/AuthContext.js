@@ -17,8 +17,12 @@ export const AuthProvider = ({ children }) => {
       
       if (token && userData) {
         setUser(userData);
-        // Silently refresh profile data.
-        // If the token is expired, the 'client' interceptor will handle the refresh automatically.
+        // CRITICAL PERFORMANCE OPTIMIZATION:
+        // Set loading to false immediately if we have cached data.
+        // This allows the user to see the dashboard instantly.
+        setLoading(false);
+        
+        // Silently refresh profile data in the background.
         try {
           const res = await getMe();
           if (res.data?.data) {
@@ -26,16 +30,16 @@ export const AuthProvider = ({ children }) => {
             await storage.setUserInfo(res.data.data);
           }
         } catch (err) {
-          console.error("Session check failed, possibly expired:", err.message);
-          // Only clear session if it's truly unrecoverable (done by interceptor usually)
+          console.error("Background session check failed:", err.message);
+          // If the token is invalid, the axios interceptor will handle the logout.
         }
       } else {
         await storage.clearAll();
+        setLoading(false);
       }
     } catch (e) {
       console.error(e);
       await storage.clearAll();
-    } finally {
       setLoading(false);
     }
   }, []);

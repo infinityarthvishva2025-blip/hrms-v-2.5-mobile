@@ -43,37 +43,103 @@ const CorrectionRequestScreen = ({ route, navigation }) => {
     reason: '',
     proofUrl: ''
   });
+const handleSubmit = async () => {
+  if (!form.reason.trim()) {
+    Toast.show({
+      type: 'error',
+      text1: 'Reason Required',
+      text2: 'Please describe why this correction is needed.',
+    });
+    return;
+  }
 
-  const handleSubmit = async () => {
-    if (!form.reason.trim()) {
-      Toast.show({ type: 'error', text1: 'Reason Required', text2: 'Please describe why this correction is needed.' });
-      return;
-    }
+  setLoading(true);
 
-    setLoading(true);
-    try {
-      const recordDateStr = new Date(record.date).toISOString().split('T')[0];
+  try {
+    // ✅ Step 1: Get base date (LOCAL, not ISO)
+    const baseDate = new Date(record.date);
+
+    // ✅ Step 2: Create full datetime objects in LOCAL time
+    const inDateTime = new Date(baseDate);
+    inDateTime.setHours(
+      form.requestedInTime.getHours(),
+      form.requestedInTime.getMinutes(),
+      0,
+      0
+    );
+
+    const outDateTime = new Date(baseDate);
+    outDateTime.setHours(
+      form.requestedOutTime.getHours(),
+      form.requestedOutTime.getMinutes(),
+      0,
+      0
+    );
+
+    // ✅ Step 3: Convert to ISO (UTC) before sending
+    const payload = {
+      reason: form.reason,
+      requestedInTime: inDateTime.toISOString(),
+      requestedOutTime: outDateTime.toISOString(),
+      proofUrl: form.proofUrl,
+    };
+
+    // 🔍 Debug (optional but VERY useful)
+    console.log('Payload:', payload);
+
+    await requestCorrection(record._id, payload);
+
+    Toast.show({
+      type: 'success',
+      text1: 'Success',
+      text2: 'Your request has been submitted for review.',
+    });
+
+    navigation.goBack();
+  } catch (error) {
+    const msg =
+      error.response?.data?.message ||
+      'Submission failed. Please check your connection.';
+
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: msg,
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+  // const handleSubmit = async () => {
+  //   if (!form.reason.trim()) {
+  //     Toast.show({ type: 'error', text1: 'Reason Required', text2: 'Please describe why this correction is needed.' });
+  //     return;
+  //   }
+
+  //   setLoading(true);
+  //   try {
+  //     const recordDateStr = new Date(record.date).toISOString().split('T')[0];
       
-      const inTimeStr = `${recordDateStr}T${form.requestedInTime.getHours().toString().padStart(2, '0')}:${form.requestedInTime.getMinutes().toString().padStart(2, '0')}:00`;
-      const outTimeStr = `${recordDateStr}T${form.requestedOutTime.getHours().toString().padStart(2, '0')}:${form.requestedOutTime.getMinutes().toString().padStart(2, '0')}:00`;
+  //     const inTimeStr = `${recordDateStr}T${form.requestedInTime.getHours().toString().padStart(2, '0')}:${form.requestedInTime.getMinutes().toString().padStart(2, '0')}:00`;
+  //     const outTimeStr = `${recordDateStr}T${form.requestedOutTime.getHours().toString().padStart(2, '0')}:${form.requestedOutTime.getMinutes().toString().padStart(2, '0')}:00`;
 
-      const payload = {
-        reason: form.reason,
-        requestedInTime: inTimeStr,
-        requestedOutTime: outTimeStr,
-        proofUrl: form.proofUrl,
-      };
+  //     const payload = {
+  //       reason: form.reason,
+  //       requestedInTime: inTimeStr,
+  //       requestedOutTime: outTimeStr,
+  //       proofUrl: form.proofUrl,
+  //     };
 
-      await requestCorrection(record._id, payload);
-      Toast.show({ type: 'success', text1: 'Success', text2: 'Your request has been submitted for review.' });
-      navigation.goBack();
-    } catch (error) {
-      const msg = error.response?.data?.message || 'Submission failed. Please check your connection.';
-      Toast.show({ type: 'error', text1: 'Error', text2: msg });
-    } finally {
-      setLoading(false);
-    }
-  };
+  //     await requestCorrection(record._id, payload);
+  //     Toast.show({ type: 'success', text1: 'Success', text2: 'Your request has been submitted for review.' });
+  //     navigation.goBack();
+  //   } catch (error) {
+  //     const msg = error.response?.data?.message || 'Submission failed. Please check your connection.';
+  //     Toast.show({ type: 'error', text1: 'Error', text2: msg });
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   return (
     <KeyboardAvoidingView 

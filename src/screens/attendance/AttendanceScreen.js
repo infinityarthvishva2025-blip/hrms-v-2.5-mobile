@@ -40,8 +40,6 @@ const BYPASS_LAT = 18.534202;
 const BYPASS_LNG = 73.839556;
 const BYPASS_CODE = 'IA00117';
 
-// Helper removed as verification is handled inside WebView
-
 const AttendanceScreen = ({ navigation }) => {
   const { user, refreshProfile } = useAuth();
   const isBypassUser = user?.employeeCode === BYPASS_CODE;
@@ -52,7 +50,6 @@ const AttendanceScreen = ({ navigation }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [htmlContent, setHtmlContent] = useState('');
 
-  // Sync profile when entering screen to catch Web registrations
   useFocusEffect(
     React.useCallback(() => {
       refreshProfile();
@@ -60,7 +57,7 @@ const AttendanceScreen = ({ navigation }) => {
   );
 
   // Geo state
-  const [geoStatus, setGeoStatus] = useState('checking'); // checking, valid, invalid, error, permission_denied
+  const [geoStatus, setGeoStatus] = useState('checking');
   const [geoDistance, setGeoDistance] = useState(0);
   const [userLocation, setUserLocation] = useState(null);
 
@@ -74,23 +71,23 @@ const AttendanceScreen = ({ navigation }) => {
   const [trackingActive, setTrackingActive] = useState(false);
 
   const [showFaceModal, setShowFaceModal] = useState(false);
-  const [faceOp, setFaceOp] = useState(null); // 'checkin' or 'checkout'
+  const [faceOp, setFaceOp] = useState(null);
   const webviewRef = useRef(null);
-  const faceOpRef = useRef(null); // 'checkin' or 'checkout'
+  const faceOpRef = useRef(null);
 
-  // Load face-verification.html as a string so we can set baseUrl:'https://localhost'
-  // This is required for Android WebView to treat the page as a secure context,
-  // which is necessary for navigator.mediaDevices.getUserMedia (camera) to work.
+  // Pre-load face-verification.html asset once
   useEffect(() => {
+    let isMounted = true;
     (async () => {
       try {
         const [asset] = await Asset.loadAsync(require('../../../face-verification.html'));
         const html = await FileSystem.readAsStringAsync(asset.localUri);
-        setHtmlContent(html);
+        if (isMounted) setHtmlContent(html);
       } catch (e) {
         console.error('[FaceVerify] Failed to load HTML asset:', e.message);
       }
     })();
+    return () => { isMounted = false; };
   }, []);
 
   // EOD Report state
@@ -103,38 +100,9 @@ const AttendanceScreen = ({ navigation }) => {
     reportParticipants: [],
   });
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const { data } = await getTodayStatus();
-      setTodayRecord(data.data.record);
-      if (data.data.office) {
-        setOfficeSettings(data.data.office);
-        if (!isBypassUser) {
-          verifyLocation(data.data.office);
-        } else {
-          setGeoStatus('valid'); // Bypass
-        }
-      }
-    } catch (error) {
-      console.error('Status fetch error:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [isBypassUser]);
+  const locationRef = useRef(null);
 
-  useEffect(() => {
-    fetchStatus();
-    fetchManagement();
-  }, [fetchStatus]);
-
-  const fetchManagement = async () => {
-    try {
-      const { data } = await getManagementEmployees();
-      setManagementEmps(data.data || []);
-    } catch (e) { }
-  };
-
-  const verifyLocation = async (office) => {
+  const verifyLocation = useCallback(async (office) => {
     if (!office) return;
     setGeoStatus('checking');
     try {
@@ -144,25 +112,66 @@ const AttendanceScreen = ({ navigation }) => {
         return;
       }
 
-      let location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setUserLocation(location.coords);
+      let coords = null;
+      try {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last?.coords) {
+          coords = last.coords;
+          setUserLocation(coords);
+          const dist = calculateDistance(coords.latitude, coords.longitude, office.lat, office.lng);
+          setGeoDistance(Math.round(dist));
+          setGeoStatus(dist <= office.radius ? 'valid' : 'invalid');
+        }
+      } catch (_) {}
 
-      const dist = calculateDistance(
-        location.coords.latitude,
-        location.coords.longitude,
-        office.lat,
-        office.lng
-      );
-
-      setGeoDistance(dist);
-      setGeoStatus(dist <= office.radius ? 'valid' : 'invalid');
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low })
+        .then(loc => {
+          if (!loc?.coords) return;
+          coords = loc.coords;
+          locationRef.current = coords;
+          setUserLocation(coords);
+          const dist = calculateDistance(coords.latitude, coords.longitude, office.lat, office.lng);
+          setGeoDistance(Math.round(dist));
+          setGeoStatus(dist <= office.radius ? 'valid' : 'invalid');
+        })
+        .catch(() => {
+          if (!coords) setGeoStatus('error');
+        });
     } catch (error) {
-      console.error('Location error:', error);
       setGeoStatus('error');
     }
+  }, []);
+
+  const fetchManagement = async () => {
+    try {
+      const { data } = await getManagementEmployees();
+      setManagementEmps(data.data || []);
+    } catch (e) { }
   };
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const { data } = await getTodayStatus();
+      setTodayRecord(data.data.record);
+      if (data.data.office) {
+        setOfficeSettings(data.data.office);
+        if (!isBypassUser) {
+          verifyLocation(data.data.office);
+        } else {
+          setGeoStatus('valid');
+        }
+      }
+    } catch (error) {
+      console.error('Status fetch error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [isBypassUser, verifyLocation]);
+
+  useEffect(() => {
+    fetchStatus();
+    fetchManagement();
+  }, [fetchStatus]);
 
   // Timer & Progress Logic
   useEffect(() => {
@@ -227,8 +236,14 @@ const AttendanceScreen = ({ navigation }) => {
     return () => clearInterval(intervalId);
   }, [todayRecord]);
 
+  // ── Haptic‑rich action handler ──
   const handleActionClick = (op) => {
-    if (!isBypassUser && workMode === 'Office' && geoStatus !== 'valid') {
+    // Haptic feedback on button tap
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const currentWorkMode = todayRecord?.workMode || workMode; // always use workMode from record
+    // Zone check only for Office mode, bypass allowed for bypass users
+    if (!isBypassUser && currentWorkMode === 'Office' && geoStatus !== 'valid') {
       Toast.show({ type: 'error', text1: 'Error', text2: 'You must be within office zone' });
       return;
     }
@@ -239,7 +254,6 @@ const AttendanceScreen = ({ navigation }) => {
     }
 
     if (isBypassUser) {
-      // Skip face for bypass
       if (op === 'checkin') {
         proceedCheckIn();
       } else {
@@ -257,17 +271,20 @@ const AttendanceScreen = ({ navigation }) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === 'ready') {
-        webviewRef.current?.injectJavaScript(`
-          window.USER_FACE_DESCRIPTOR = ${JSON.stringify(user.faceDescriptor || [])};
-          window.FACE_OP = '${faceOpRef.current}';
-          true;
-        `);
+        setTimeout(() => {
+          webviewRef.current?.injectJavaScript(`
+            window.USER_FACE_DESCRIPTOR = ${JSON.stringify(user.faceDescriptor || [])};
+            window.FACE_OP = '${faceOpRef.current}';
+            window.CONFIG_LOADED = true;
+            true;
+          `);
+        }, 100);
       } else if (msg.type === 'error') {
-        Toast.show({ type: 'error', text1: 'Face Verification Error', text2: msg.error });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Toast.show({ type: 'error', text1: 'Verification Failed', text2: msg.error });
       } else if (msg.type === 'cancel') {
         setShowFaceModal(false);
       } else if (msg.type === 'descriptor') {
-        // Success
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Toast.show({ type: 'success', text1: 'Identity Verified ✓' });
         setShowFaceModal(false);
@@ -335,6 +352,7 @@ const AttendanceScreen = ({ navigation }) => {
       else Toast.show({ type: 'success', text1: 'Success', text2: 'Checked out successfully' });
 
       setShowReportModal(false);
+      setReportForm({ todayWork: '', pendingWork: '', issuesFaced: '', reportParticipants: [] });
       fetchStatus();
       refreshProfile();
     } catch (error) {
@@ -432,36 +450,50 @@ const AttendanceScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* Hero Action Card */}
+        {/* Premium Hero Action Card */}
         <View style={styles.heroContainer}>
           <LinearGradient
-            colors={colors.gradients.primary}
+            colors={['#1E3A8A', '#3B82F6']}  // deeper, more premium gradient
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.heroCard}
           >
-            {/* Geometric Overlays */}
             <View style={[styles.heroBlob, { top: -60, right: -60, width: 220, height: 220, opacity: 0.15 }]} />
             <View style={[styles.heroBlob, { bottom: -40, left: -40, width: 140, height: 140, opacity: 0.1 }]} />
 
             <View style={styles.heroContent}>
               {isCheckedIn && !isCheckedOut ? (
                 <View style={styles.activeSession}>
-                  <View style={styles.glassTimer}>
+                  {/* Timer Section – gradient pill */}
+                  <LinearGradient
+                    colors={isOvertime
+                      ? ['rgba(245,158,11,0.22)', 'rgba(239,68,68,0.18)']
+                      : ['rgba(32,118,199,0.22)', 'rgba(28,173,163,0.22)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.timerGradientCard}
+                  >
                     <Text style={[styles.timerLabel, isOvertime && { color: '#FCD34D' }]}>
-                      {isOvertime ? 'OVERTIME RUNNING' : 'REMAINING TIME'}
+                      {isOvertime ? '🔥 OVERTIME RUNNING' : '⏱ TIME REMAINING'}
                     </Text>
-                    <Text style={[styles.timerText, isOvertime && { color: '#FCD34D' }]}>
+                    <Text
+                      style={[styles.timerText, isOvertime && { color: '#FCD34D' }]}
+                      adjustsFontSizeToFit
+                      numberOfLines={1}
+                    >
                       {isOvertime && '+'}{timerDisplay}
                     </Text>
-                    {/* Progress Bar */}
                     <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+                      <View style={[
+                        styles.progressFill,
+                        { width: `${progressPct}%` },
+                        isOvertime && { backgroundColor: '#FCD34D' }
+                      ]} />
                     </View>
-                  </View>
-                  <Text style={styles.shiftTarget}>
-                    SHIPPING GOAL: {new Date().getDay() === 6 ? '7.0h' : '8.5h'}
-                  </Text>
+                    <Text style={[styles.shiftTarget, { marginTop: 8 }]}>
+                      SHIFT GOAL · {new Date().getDay() === 6 ? '7.0 hrs' : '8.5 hrs'}
+                    </Text>
+                  </LinearGradient>
                 </View>
               ) : isCheckedOut ? (
                 <View style={styles.doneSession}>
@@ -481,7 +513,6 @@ const AttendanceScreen = ({ navigation }) => {
                 </View>
               )}
 
-              {/* Action Button */}
               <View style={styles.heroActions}>
                 {!isCheckedIn ? (
                   <>
@@ -512,7 +543,7 @@ const AttendanceScreen = ({ navigation }) => {
                         {actionLoading ? <ActivityIndicator color={colors.primary} /> : (
                           <>
                             <Ionicons name="flash" size={20} color={canAct ? colors.primary : '#fff'} />
-                            <Text style={[styles.actionBtnText, { color: canAct ? colors.primary : '#fff' }]}>GEO CHECK IN </Text>
+                            <Text style={[styles.actionBtnText, { color: canAct ? colors.primary : '#fff' }]}>GEO CHECK IN</Text>
                           </>
                         )}
                       </LinearGradient>
@@ -548,7 +579,6 @@ const AttendanceScreen = ({ navigation }) => {
           </LinearGradient>
         </View>
 
-
         {/* Disclaimer */}
         <View style={styles.disclaimerContainer}>
           <Text style={styles.disclaimerText}>
@@ -557,7 +587,7 @@ const AttendanceScreen = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* Metrics Grid */}
+        {/* Premium Metrics Grid */}
         <Text style={styles.sectionTitle}>Shift Metrics</Text>
         <View style={styles.metricsGrid}>
           <AppCard style={styles.metricItem}>
@@ -609,17 +639,19 @@ const AttendanceScreen = ({ navigation }) => {
         <View style={{ height: 60 }} />
       </ScrollView>
 
-
       {/* Face Verification Modal (WebView) */}
       <Modal
         isVisible={showFaceModal}
         style={{ margin: 0 }}
-        animationIn="slideInUp"
-        animationOut="slideOutDown"
+        animationIn="fadeIn"
+        animationOut="fadeOut"
+        animationInTiming={250}
+        animationOutTiming={200}
         backdropOpacity={1}
         backdropColor="#080C14"
+        useNativeDriver
       >
-        <View style={{ flex: 1, backgroundColor: '#080C14', paddingTop: Platform.OS === 'ios' ? 40 : 0 }}>
+        <View style={{ flex: 1, backgroundColor: '#080C14', paddingTop: Platform.OS === 'ios' ? 44 : 0 }}>
           {showFaceModal && !!htmlContent && (
             <WebView
               ref={webviewRef}
@@ -634,8 +666,8 @@ const AttendanceScreen = ({ navigation }) => {
               allowsInlineMediaPlayback={true}
               javaScriptEnabled={true}
               domStorageEnabled={true}
+              cacheEnabled={true}
               onPermissionRequest={(request) => {
-                // Auto-grant camera & mic permissions for face verification
                 request.grant(request.resources);
               }}
             />
@@ -643,80 +675,166 @@ const AttendanceScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Checkout Report Modal */}
+      {/* Checkout Report Modal – Premium Bottom Sheet */}
       <Modal
         isVisible={showReportModal}
         style={styles.modal}
-        onBackdropPress={() => setShowReportModal(false)}
+        onBackdropPress={() => !actionLoading && setShowReportModal(false)}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        animationInTiming={350}
+        animationOutTiming={300}
+        backdropTransitionInTiming={200}
+        backdropTransitionOutTiming={200}
         propagateSwipe
+        swipeDirection="down"
+        onSwipeComplete={() => !actionLoading && setShowReportModal(false)}
+        avoidKeyboard={true}
+        useNativeDriver={true}
+        hideModalContentWhileAnimating={true}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, justifyContent: 'flex-end' }}
+        >
           <View style={styles.modalContent}>
+            {/* Drag handle */}
+            <View style={styles.modalHandle} />
+
+            {/* Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Check-out Report</Text>
-              <TouchableOpacity onPress={() => setShowReportModal(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
+              <View>
+                <Text style={styles.modalTitle}>End of Day Report</Text>
+                <Text style={styles.modalSubtitle}>Required before check-out</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => !actionLoading && setShowReportModal(false)}
+              >
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.reportLabel}>Today's Completed Work *</Text>
-              <TextInput
-                style={[styles.reportInput, { height: 80 }]}
-                placeholder="What did you achieve today?"
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-                value={reportForm.todayWork}
-                onChangeText={t => setReportForm({ ...reportForm, todayWork: t })}
-              />
-
-              <Text style={styles.reportLabel}>Pending / Carry-over Tasks</Text>
-              <TextInput
-                style={[styles.reportInput, { height: 60 }]}
-                placeholder="Tasks for tomorrow..."
-                multiline
-                numberOfLines={2}
-                textAlignVertical="top"
-                value={reportForm.pendingWork}
-                onChangeText={t => setReportForm({ ...reportForm, pendingWork: t })}
-              />
-
-              <Text style={styles.reportLabel}>Issues / Blockers</Text>
-              <TextInput
-                style={[styles.reportInput, { height: 60 }]}
-                placeholder="Any challenges faced?"
-                multiline
-                numberOfLines={2}
-                textAlignVertical="top"
-                value={reportForm.issuesFaced}
-                onChangeText={t => setReportForm({ ...reportForm, issuesFaced: t })}
-              />
-
-              <Text style={styles.reportLabel}>Share Report With</Text>
-              <View style={styles.participantsContainer}>
-                {managementEmps.map(emp => {
-                  const selected = reportForm.reportParticipants.includes(emp._id);
-                  return (
-                    <TouchableOpacity
-                      key={emp._id}
-                      onPress={() => toggleParticipant(emp._id)}
-                      style={[styles.participantPill, selected && styles.selectedPill]}
-                    >
-                      <Text style={[styles.participantText, selected && { color: '#fff' }]}>{emp.name}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+            <ScrollView 
+              showsVerticalScrollIndicator={false} 
+              keyboardShouldPersistTaps="handled"
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              {/* Today's Work */}
+              <View style={styles.reportFieldBlock}>
+                <View style={styles.reportLabelRow}>
+                  <View style={[styles.reportLabelIcon, { backgroundColor: colors.success + '15' }]}>
+                    <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
+                  </View>
+                  <Text style={styles.reportLabel}>Today's Completed Work <Text style={{ color: colors.error }}>*</Text></Text>
+                </View>
+                <TextInput
+                  style={[styles.reportInput, { height: 90 }]}
+                  placeholder="Describe what you accomplished today…"
+                  placeholderTextColor={colors.textTertiary}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  value={reportForm.todayWork}
+                  onChangeText={t => setReportForm({ ...reportForm, todayWork: t })}
+                />
               </View>
 
+              {/* Pending Work */}
+              <View style={styles.reportFieldBlock}>
+                <View style={styles.reportLabelRow}>
+                  <View style={[styles.reportLabelIcon, { backgroundColor: colors.warning + '15' }]}>
+                    <Ionicons name="time-outline" size={16} color={colors.warning} />
+                  </View>
+                  <Text style={styles.reportLabel}>Pending / Carry-over Tasks</Text>
+                </View>
+                <TextInput
+                  style={[styles.reportInput, { height: 70 }]}
+                  placeholder="Tasks carrying over to tomorrow…"
+                  placeholderTextColor={colors.textTertiary}
+                  multiline
+                  numberOfLines={2}
+                  textAlignVertical="top"
+                  value={reportForm.pendingWork}
+                  onChangeText={t => setReportForm({ ...reportForm, pendingWork: t })}
+                />
+              </View>
+
+              {/* Issues */}
+              <View style={styles.reportFieldBlock}>
+                <View style={styles.reportLabelRow}>
+                  <View style={[styles.reportLabelIcon, { backgroundColor: colors.error + '12' }]}>
+                    <Ionicons name="alert-circle-outline" size={16} color={colors.error} />
+                  </View>
+                  <Text style={styles.reportLabel}>Issues / Blockers</Text>
+                </View>
+                <TextInput
+                  style={[styles.reportInput, { height: 70 }]}
+                  placeholder="Any blockers or challenges faced?"
+                  placeholderTextColor={colors.textTertiary}
+                  multiline
+                  numberOfLines={2}
+                  textAlignVertical="top"
+                  value={reportForm.issuesFaced}
+                  onChangeText={t => setReportForm({ ...reportForm, issuesFaced: t })}
+                />
+              </View>
+
+              {/* Share with */}
+              <View style={styles.reportFieldBlock}>
+                <View style={styles.reportLabelRow}>
+                  <View style={[styles.reportLabelIcon, { backgroundColor: colors.info + '12' }]}>
+                    <Ionicons name="people-outline" size={16} color={colors.info} />
+                  </View>
+                  <Text style={styles.reportLabel}>Share Report With</Text>
+                </View>
+                <View style={styles.participantsContainer}>
+                  {managementEmps.map(emp => {
+                    const selected = reportForm.reportParticipants.includes(emp._id);
+                    return (
+                      <TouchableOpacity
+                        key={emp._id}
+                        onPress={() => toggleParticipant(emp._id)}
+                        style={[styles.participantPill, selected && styles.selectedPill]}
+                        activeOpacity={0.75}
+                      >
+                        {selected && <Ionicons name="checkmark" size={12} color="#fff" style={{ marginRight: 4 }} />}
+                        <Text style={[styles.participantText, selected && { color: '#fff' }]}>{emp.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={{ height: 100 }} />
+            </ScrollView>
+
+            {/* Sticky Submit Footer */}
+            <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={[styles.submitBtn, actionLoading && styles.disabledBtn]}
                 onPress={proceedCheckOut}
                 disabled={actionLoading}
+                activeOpacity={0.85}
               >
-                {actionLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>Submit & Check Out</Text>}
+                <LinearGradient
+                  colors={['#EF4444', '#DC2626']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.submitBtnGradient}
+                >
+                  {actionLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="log-out" size={20} color="#fff" />
+                      <Text style={styles.submitBtnText}>Submit & Check Out</Text>
+                    </>
+                  )}
+                </LinearGradient>
               </TouchableOpacity>
-            </ScrollView>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -747,11 +865,12 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     padding: 28,
     overflow: 'hidden',
-    elevation: 12,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
+    elevation: 14,
+    shadowColor: '#1E3A8A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    backgroundColor: 'transparent', // gradient handles background
   },
   heroBlob: {
     position: 'absolute',
@@ -761,32 +880,38 @@ const styles = StyleSheet.create({
   heroContent: { flex: 1, justifyContent: 'space-between', zIndex: 2 },
 
   activeSession: { alignItems: 'center', marginTop: 10 },
-  glassTimer: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+  timerGradientCard: {
     paddingVertical: 20,
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     width: '100%',
+    overflow: 'hidden',
   },
-  timerLabel: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.6)', letterSpacing: 1.5, marginBottom: 6 },
-  timerText: { fontSize: 54, fontWeight: '900', color: '#fff', fontVariant: ['tabular-nums'], letterSpacing: -1 },
+  timerLabel: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.75)', letterSpacing: 1.5, marginBottom: 6 },
+  timerText: {
+    fontSize: 56,
+    fontWeight: '900',
+    color: '#fff',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -1.5,
+  },
   progressTrack: {
     width: '100%',
-    height: 4,
+    height: 5,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    marginTop: 10,
+    borderRadius: 3,
+    marginTop: 12,
     overflow: 'hidden'
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 2
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 3
   },
-  shiftTarget: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 14, fontWeight: '800', letterSpacing: 0.5 },
+  shiftTarget: { fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: '800', letterSpacing: 0.5 },
 
   idleSession: { alignItems: 'center', marginTop: 10 },
   idleIconBg: { width: 72, height: 72, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
@@ -805,7 +930,16 @@ const styles = StyleSheet.create({
   workModeText: { color: 'rgba(255,255,255,0.7)', fontWeight: '700', fontSize: 13 },
   workModeTextActive: { color: colors.primary, fontWeight: '900' },
 
-  actionBtn: { height: 60, borderRadius: 24, overflow: 'hidden', elevation: 6 },
+  actionBtn: {
+    height: 60,
+    borderRadius: 24,
+    overflow: 'hidden',
+    elevation: 9,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+  },
   actionBtnDisabled: { opacity: 0.8 },
   actionBtnGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   actionBtnText: { fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
@@ -813,13 +947,25 @@ const styles = StyleSheet.create({
   completedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.1)', paddingVertical: 12, borderRadius: 16 },
   completedBadgeText: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.7)', letterSpacing: 1 },
 
-  sectionTitle: { fontSize: 18, fontWeight: '900', color: colors.text, marginBottom: 16, letterSpacing: -0.5 },
+  sectionTitle: { fontSize: 20, fontWeight: '900', color: colors.text, marginBottom: 16, letterSpacing: -0.8 },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  metricItem: { width: (width - 52) / 2, padding: 16, borderRadius: 24 },
+  metricItem: {
+    width: (width - 52) / 2,
+    padding: 16,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.05)', // semi‑transparent glass
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
   miniMetric: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  miniMetricIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  miniMetricLabel: { fontSize: 10, fontWeight: '800', color: colors.textTertiary, textTransform: 'uppercase', marginBottom: 2, letterSpacing: 0.5 },
-  miniMetricValue: { fontSize: 15, fontWeight: '900', color: colors.text },
+  miniMetricIcon: { width: 38, height: 38, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  miniMetricLabel: { fontSize: 11, fontWeight: '700', color: colors.textTertiary, textTransform: 'uppercase', marginBottom: 2, letterSpacing: 0.6 },
+  miniMetricValue: { fontSize: 16, fontWeight: '900', color: colors.text },
 
   lateNotice: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18, borderRadius: 24, marginTop: 20, backgroundColor: colors.warning + '08', borderLeftWidth: 4, borderLeftColor: colors.warning },
   lateIconBg: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.warning + '15', justifyContent: 'center', alignItems: 'center' },
@@ -828,71 +974,96 @@ const styles = StyleSheet.create({
 
   modal: { margin: 0, justifyContent: 'flex-end' },
   modalContent: {
+    flex: 1,
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    padding: 28,
-    paddingTop: 32,
-    maxHeight: '90%',
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    maxHeight: '94%',
   },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: colors.borderDark,
+    alignSelf: 'center', marginBottom: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'flex-start', marginBottom: 20,
+    paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
   modalTitle: { fontSize: 22, fontWeight: '900', color: colors.text, letterSpacing: -0.8 },
-  reportLabel: { fontSize: 13, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, marginTop: 18, marginLeft: 2 },
+  modalSubtitle: { fontSize: 13, fontWeight: '600', color: colors.textTertiary, marginTop: 3 },
+  modalCloseBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.surfaceAlt,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  reportFieldBlock: { marginBottom: 4 },
+  reportLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18, marginBottom: 10 },
+  reportLabelIcon: { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  reportLabel: { fontSize: 13, fontWeight: '800', color: colors.textSecondary },
   reportInput: {
     backgroundColor: colors.surfaceAlt,
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 18,
+    padding: 16,
     fontSize: 15,
     color: colors.text,
     borderWidth: 1.5,
     borderColor: colors.border,
+    lineHeight: 22,
   },
-  participantsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
+  participantsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   participantPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 24,
     backgroundColor: colors.surfaceAlt,
     borderWidth: 1.5,
     borderColor: colors.border,
   },
   disclaimerContainer: {
-  backgroundColor: '#FFF3CD',
-  borderLeftWidth: 4,
-  borderLeftColor: '#FFC107',
-  padding: 10,
-  marginBottom: 12,
-  borderRadius: 8,
-},
-
-disclaimerText: {
-  fontSize: 12,
-  color: '#856404',
-  lineHeight: 18,
-},
-
-
-
-
-
+    backgroundColor: '#FFF3CD',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFC107',
+    padding: 10,
+    marginBottom: 12,
+    borderRadius: 8,
+  },
+  disclaimerText: {
+    fontSize: 12,
+    color: '#856404',
+    lineHeight: 18,
+  },
   selectedPill: { backgroundColor: colors.primary, borderColor: colors.primary },
   participantText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
+  modalFooter: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: 24,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   submitBtn: {
-    backgroundColor: colors.primary,
-    height: 60,
+    height: 58,
     borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 36,
-    marginBottom: 20,
-    shadowColor: colors.primary,
+    overflow: 'hidden',
+    shadowColor: '#EF4444',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
   },
-  submitBtnText: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  disabledBtn: { opacity: 0.7 }
+  submitBtnGradient: {
+    flex: 1, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: 10,
+  },
+  submitBtnText: { color: '#fff', fontSize: 17, fontWeight: '900' },
+  disabledBtn: { opacity: 0.65 }
 });
 
 export default AttendanceScreen;

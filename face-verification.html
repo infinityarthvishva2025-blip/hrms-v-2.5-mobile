@@ -18,572 +18,222 @@
       color:#F9FAFB;
     }
 
-    /* ─── LOADING OVERLAY ─── */
     #loadingOverlay{
       position:fixed;inset:0;background:#080C14;
       display:flex;flex-direction:column;align-items:center;justify-content:center;
-      z-index:100;transition:opacity .4s ease;
+      z-index:100;transition:opacity .2s ease;
     }
     #loadingOverlay.hidden{opacity:0;pointer-events:none}
     .loader-ring{
-      width:48px;height:48px;border-radius:50%;
+      width:40px;height:40px;border-radius:50%;
       border:3px solid rgba(255,255,255,.08);border-top-color:var(--blue);
-      animation:spin .8s linear infinite;margin-bottom:20px;
+      animation:spin .6s linear infinite;margin-bottom:15px;
     }
-    .loader-text{font-size:15px;font-weight:600;color:#9CA3AF}
-    .loader-sub{font-size:12px;color:#4B5563;margin-top:6px;text-align:center;padding:0 24px}
     @keyframes spin{to{transform:rotate(360deg)}}
 
-    /* ─── HEADER ─── */
-    .hdr{width:100%;padding:env(safe-area-inset-top,20px) 24px 0;text-align:center;padding-top:max(env(safe-area-inset-top),20px)}
-    .hdr-title{font-size:20px;font-weight:800;letter-spacing:-.5px}
-    .hdr-sub{font-size:13px;color:#6B7280;margin-top:4px;transition:color .3s}
+    .hdr{width:100%;padding:env(safe-area-inset-top,15px) 24px 0;text-align:center}
+    .hdr-title{font-size:18px;font-weight:800}
+    .hdr-sub{font-size:12px;color:#6B7280;margin-top:2px}
 
-    /* ─── CAMERA RING ─── */
     .cam-stage{
-      position:relative;margin-top:24px;
-      width:min(300px,82vw);height:min(300px,82vw);
-      /* Extra space for ring glow that bleeds outside the circle */
-      padding:12px;
+      position:relative;margin-top:20px;
+      width:min(280px,80vw);height:min(280px,80vw);
+      padding:10px;
     }
-    /* clip-path for the VIDEO container only — not the ring */
     .cam-wrap{
-      position:relative;
-      width:100%;height:100%;
-      border-radius:50%;overflow:hidden;
+      position:relative;width:100%;height:100%;
+      border-radius:50%;overflow:hidden;background:#000;
     }
     video{
-      width:100%;height:100%;
-      object-fit:cover;
-      display:block;
-      /* transform applied via JS after stream starts */
+      width:100%;height:100%;object-fit:cover;
+      display:block;transform:scaleX(-1);
     }
-    /* Ring overlay sits OUTSIDE cam-wrap (not clipped), positioned on cam-stage */
     .ring-glow{
-      position:absolute;inset:0;
-      border-radius:50%;
+      position:absolute;inset:0;border-radius:50%;
       background:radial-gradient(circle,var(--rg) 0%,transparent 70%);
-      pointer-events:none;transition:background .5s ease;
-      z-index:2;
+      pointer-events:none;z-index:2;
     }
     .ring-svg{
-      position:absolute;
-      top:-6px;left:-6px;
-      width:calc(100% + 12px);height:calc(100% + 12px);
-      pointer-events:none;overflow:visible;
-      z-index:3;
+      position:absolute;top:-5px;left:-5px;
+      width:calc(100% + 10px);height:calc(100% + 10px);
+      pointer-events:none;z-index:3;
     }
     .ring-arc{
       fill:none;stroke:var(--rc);stroke-width:3;stroke-linecap:round;
-      transition:stroke .4s ease,stroke-dasharray .4s ease,stroke-dashoffset .3s ease;
-      transform-origin:center;
+      transition:stroke .2s ease;transform-origin:center;
     }
-    .ring-arc.spinning{animation:rotateCW 4s linear infinite}
-    .ring-arc.solid{stroke-dasharray:none!important}
+    .ring-arc.spinning{animation:rotateCW 2s linear infinite}
     @keyframes rotateCW{to{transform:rotate(360deg)}}
 
-    /* oval guide — inside the clipped cam-wrap */
     .face-oval{
       position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:62%;height:78%;border:1.5px dashed rgba(255,255,255,.18);border-radius:50%;
-      pointer-events:none;z-index:1;
+      width:65%;height:80%;border:1px dashed rgba(255,255,255,.15);border-radius:50%;
+      z-index:1;transition:border-color .2s;
     }
-    /* confidence badge — on cam-stage, outside clip */
-    .conf-badge{
-      position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);
-      background:rgba(8,12,20,.9);border:1px solid rgba(255,255,255,.1);
-      border-radius:20px;padding:5px 16px;font-size:12px;font-weight:700;
-      color:#6B7280;white-space:nowrap;backdrop-filter:blur(8px);
-      transition:color .3s;z-index:4;
-    }
-    /* countdown — over cam-stage */
-    .cdown{
-      display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:72px;height:72px;border-radius:50%;
-      background:rgba(32,118,199,.88);backdrop-filter:blur(8px);
-      align-items:center;justify-content:center;
-      font-size:32px;font-weight:900;color:#fff;z-index:10;
-    }
-    .cdown.vis{display:flex}
+    .face-oval.lit{border-color:var(--green)}
 
-    /* ─── STATUS ─── */
-    .status-wrap{margin-top:28px;text-align:center;padding:0 24px;min-height:88px}
-    .s-icon{font-size:26px;margin-bottom:8px}
-    .s-text{font-size:16px;font-weight:700;color:#F9FAFB;margin-bottom:5px}
-    .s-sub{font-size:13px;color:#6B7280;line-height:1.5}
-    .liveness-cue{
-      display:none;margin-top:10px;background:rgba(245,158,11,.1);
-      border:1px solid rgba(245,158,11,.25);border-radius:12px;
-      padding:8px 20px;font-size:13px;font-weight:700;color:#FCD34D;
-    }
+    .status-wrap{margin-top:25px;text-align:center;padding:0 24px;min-height:70px}
+    .s-text{font-size:15px;font-weight:700;color:#F9FAFB}
+    .s-sub{font-size:12px;color:#6B7280;margin-top:4px}
 
-    /* ─── PROGRESS ─── */
-    .prog-wrap{width:min(280px,80vw);height:3px;background:rgba(255,255,255,.07);border-radius:2px;margin-top:20px;overflow:hidden}
-    .prog-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--teal));border-radius:2px;width:0%;transition:width .3s ease}
+    .prog-wrap{width:min(240px,70vw);height:3px;background:rgba(255,255,255,.05);border-radius:2px;margin-top:15px;overflow:hidden}
+    .prog-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--teal));width:0%;transition:width .15s ease}
 
-    /* ─── BUTTONS ─── */
-    .btn-row{display:flex;gap:12px;padding:24px 24px calc(env(safe-area-inset-bottom,0px) + 32px);width:100%;max-width:360px}
-    .btn-main{
-      flex:1;border:none;padding:17px;border-radius:18px;
-      font-size:15px;font-weight:800;cursor:pointer;letter-spacing:.3px;
-      background:linear-gradient(135deg,var(--blue),var(--teal));color:#fff;
-      transition:opacity .2s,transform .1s;
-    }
-    .btn-main:disabled{opacity:.35;cursor:not-allowed}
-    .btn-main:not(:disabled):active{transform:scale(.97)}
+    .btn-row{display:flex;padding:20px 24px calc(env(safe-area-inset-bottom,0px) + 20px);width:100%;max-width:320px}
     .btn-cancel{
-      background:rgba(255,255,255,.06);color:#9CA3AF;
-      border:1px solid rgba(255,255,255,.1);
-      padding:17px 20px;border-radius:18px;font-size:15px;font-weight:600;cursor:pointer;
+      flex:1;background:rgba(255,255,255,.05);color:#9CA3AF;
+      border:1px solid rgba(255,255,255,.1);padding:14px;border-radius:15px;
+      font-size:14px;font-weight:600;cursor:pointer;
     }
   </style>
 </head>
 <body>
 
-<!-- Loading -->
 <div id="loadingOverlay">
   <div class="loader-ring"></div>
-  <div class="loader-text" id="lText">Loading AI models…</div>
-  <div class="loader-sub" id="lSub">This may take a few seconds on first use</div>
+  <div class="loader-text">Waking up AI...</div>
 </div>
 
 <div class="hdr">
-  <div class="hdr-title">Face Verification</div>
-  <div class="hdr-sub" id="hdrSub">Align your face in the circle</div>
+  <div class="hdr-title">Face Check</div>
+  <div class="hdr-sub">Look at the camera</div>
 </div>
 
-<!-- Camera stage: ring-svg + glow sit OUTSIDE the clip wrapper -->
-<div class="cam-stage" id="camStage">
-  <!-- clipped video container -->
-  <div class="cam-wrap" id="camWrap">
-    <video id="video" autoplay muted playsinline webkit-playsinline x-webkit-airplay="allow"></video>
-    <div class="face-oval"></div>
+<div class="cam-stage">
+  <div class="cam-wrap">
+    <video id="video" autoplay muted playsinline></video>
+    <div class="face-oval" id="faceOval"></div>
   </div>
-  <!-- ring, glow, badges OUTSIDE overflow:hidden so they render freely -->
   <div class="ring-glow" id="glow"></div>
   <svg class="ring-svg" viewBox="0 0 320 320">
-    <circle class="ring-arc spinning" cx="160" cy="160" r="158" id="arc"
-      stroke-dasharray="16 10"/>
+    <circle class="ring-arc spinning" cx="160" cy="160" r="158" id="arc" stroke-dasharray="10 15"/>
   </svg>
-  <div class="conf-badge" id="conf">Scanning…</div>
-  <div class="cdown" id="cdown"></div>
 </div>
 
 <div class="status-wrap">
-  <div class="s-icon" id="sIcon">👁</div>
-  <div class="s-text" id="sTxt">Starting camera…</div>
-  <div class="s-sub" id="sSub">Please wait while we initialise face detection</div>
-  <div class="liveness-cue" id="livCue"></div>
+  <div class="s-text" id="sTxt">Preparing...</div>
+  <div class="s-sub" id="sSub">Wait a second</div>
 </div>
 
 <div class="prog-wrap"><div class="prog-fill" id="prog"></div></div>
 
 <div class="btn-row">
-  <button class="btn-main" id="mainBtn" disabled>Please wait…</button>
   <button class="btn-cancel" id="cancelBtn">Cancel</button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script>
-// ── DOM refs ──
-const video   = document.getElementById('video');
-const arc     = document.getElementById('arc');
-const glow    = document.getElementById('glow');
-const conf    = document.getElementById('conf');
-const cdown   = document.getElementById('cdown');
-const hdrSub  = document.getElementById('hdrSub');
-const sIcon   = document.getElementById('sIcon');
-const sTxt    = document.getElementById('sTxt');
-const sSub    = document.getElementById('sSub');
-const livCue  = document.getElementById('livCue');
-const prog    = document.getElementById('prog');
-const mainBtn = document.getElementById('mainBtn');
-const cancelBtn= document.getElementById('cancelBtn');
-const lText   = document.getElementById('lText');
-const lSub    = document.getElementById('lSub');
-const lo      = document.getElementById('loadingOverlay');
+const video = document.getElementById('video');
+const arc = document.getElementById('arc');
+const sTxt = document.getElementById('sTxt');
+const sSub = document.getElementById('sSub');
+const prog = document.getElementById('prog');
+const faceOval = document.getElementById('faceOval');
+const lo = document.getElementById('loadingOverlay');
 
-// ── State ──
-let stream = null, modelsLoaded = false, isProcessing = false;
-let detInterval = null, autoCapTimer = null, cdownTimer = null;
-let stableTicks = 0, STABLE_NEEDED = 3; // 3 × 500 ms = 1.5 s
-let cdownSec = 0;
-let livenessPhase = 0, livenessCheckDone = false;
-const LIVENESS = ['Look slightly left','Look slightly right','Look straight ahead'];
+let stream = null, isProcessing = false;
+let detInterval = null;
 const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-const MIN_CONF = 0.60;
-let retryCount = 0;
-const MAX_RETRY = 2;
+const SCAN_OPTS = new faceapi.TinyFaceDetectorOptions({ inputSize: 128, scoreThreshold: 0.5 });
 
-// ── Post to RN ──
-function postRN(obj) {
-  try { window.ReactNativeWebView.postMessage(JSON.stringify(obj)); } catch(e) {}
-}
+function postRN(obj) { try { window.ReactNativeWebView.postMessage(JSON.stringify(obj)); } catch(e) {} }
 
-// ── Ring colour helper ──
-const COLORS = {
-  idle:     { rc:'#374151', rg:'rgba(55,65,81,.15)', dash:'16 10' },
-  scanning: { rc:'#2076C7', rg:'rgba(32,118,199,.2)', dash:'20 8' },
-  detecting:{ rc:'#F59E0B', rg:'rgba(245,158,11,.25)', dash:'none' },
-  success:  { rc:'#10B981', rg:'rgba(16,185,129,.3)', dash:'none' },
-  failed:   { rc:'#EF4444', rg:'rgba(239,68,68,.25)', dash:'none' },
-};
-function setRing(state) {
-  const c = COLORS[state] || COLORS.idle;
-  document.documentElement.style.setProperty('--rc', c.rc);
-  document.documentElement.style.setProperty('--rg', c.rg);
-  arc.setAttribute('stroke-dasharray', c.dash === 'none' ? '1000' : c.dash);
-  arc.style.stroke = c.rc;
-  glow.style.background = `radial-gradient(circle,${c.rg} 0%,transparent 70%)`;
-}
-
-function setUI({ icon, txt, sub, confTxt, confColor, progW, btnTxt, btnDis, liveness, subColor }) {
-  if (icon !== undefined) sIcon.textContent = icon;
-  if (txt  !== undefined) sTxt.textContent  = txt;
-  if (sub  !== undefined) sSub.textContent  = sub;
-  if (confTxt   !== undefined) { conf.textContent = confTxt; conf.style.color = confColor || '#6B7280'; }
-  if (progW !== undefined) prog.style.width = progW + '%';
-  if (btnTxt !== undefined) { mainBtn.textContent = btnTxt; mainBtn.disabled = !!btnDis; }
-  if (liveness !== undefined) {
-    livCue.style.display = liveness ? 'block' : 'none';
-    if (liveness) livCue.textContent = liveness;
+function setUI(txt, sub, p, color) {
+  sTxt.textContent = txt;
+  sSub.textContent = sub;
+  prog.style.width = p + '%';
+  if (color) {
+    document.documentElement.style.setProperty('--rc', color);
+    arc.style.stroke = color;
   }
-  if (subColor !== undefined) hdrSub.style.color = subColor;
 }
 
-// ── Models ──
-async function loadModels() {
-  if (modelsLoaded) return;
-  // Timeout wrapper: if models take > 20s, throw a clear error
-  const withTimeout = (promise, ms, label) => {
-    const t = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout loading ${label} after ${ms/1000}s. Check your internet connection.`)), ms)
-    );
-    return Promise.race([promise, t]);
-  };
-
-  lText.textContent = 'Loading AI model (1/3)…';
-  lSub.textContent = 'Face Detector — may take a moment on first use';
-  await withTimeout(faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL), 20000, 'Face Detector');
-
-  lText.textContent = 'Loading AI model (2/3)…';
-  lSub.textContent = 'Landmark Detection';
-  await withTimeout(faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL), 20000, 'Landmark Model');
-
-  lText.textContent = 'Loading AI model (3/3)…';
-  lSub.textContent = 'Face Recognition';
-  await withTimeout(faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL), 30000, 'Recognition Model');
-
-  modelsLoaded = true;
-}
-
-// ── Camera ──
-async function startCamera() {
-  // ── Polyfill: Android WebView may not expose navigator.mediaDevices ──
-  if (!navigator.mediaDevices) navigator.mediaDevices = {};
-  if (!navigator.mediaDevices.getUserMedia) {
-    const legacyGUM = navigator.getUserMedia || navigator.webkitGetUserMedia ||
-                      navigator.mozGetUserMedia || navigator.msGetUserMedia;
-    if (!legacyGUM) {
-      throw new DOMException(
-        'Camera API unavailable. Ensure the app has camera permission.',
-        'NotSupportedError'
-      );
-    }
-    navigator.mediaDevices.getUserMedia = (c) =>
-      new Promise((res, rej) => legacyGUM.call(navigator, c, res, rej));
-  }
-
-  // Simplified constraints — complex constraints block Android WebView cameras
-  const constraints = {
-    video: { facingMode: { ideal: 'user' } },
-    audio: false,
-  };
-
+async function start() {
   try {
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-  } catch(e) {
-    // Retry once with bare-minimum constraints if specific ones fail
-    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-  }
-
-  // Ensure all attributes are set programmatically (Android WebView sometimes ignores HTML attrs)
-  video.setAttribute('autoplay', '');
-  video.setAttribute('muted', '');
-  video.setAttribute('playsinline', '');
-  video.setAttribute('webkit-playsinline', '');
-  video.muted = true;
-  video.srcObject = stream;
-
-  // Apply mirror AFTER srcObject — applying transform before causes black screen
-  video.style.transform = 'scaleX(-1)';
-
-  // Multi-event strategy — onloadedmetadata does NOT fire reliably on Android WebView
-  await new Promise((resolve) => {
-    let done = false;
-    const finish = () => { if (!done) { done = true; resolve(); } };
-
-    video.oncanplay     = finish;
-    video.onplaying     = finish;
-    video.onloadeddata  = finish;
-    video.onloadedmetadata = () => {
-      video.play().catch(() => {}).finally(finish);
-    };
-
-    // Hard timeout: if none of the events fire, proceed anyway after 3s
-    setTimeout(finish, 3000);
-
-    // Kick off loading
-    video.load();
-  });
-
-  // Ensure playing — some Android WebViews require an explicit call
-  if (video.paused) {
-    try { await video.play(); } catch(_) {}
-  }
-}
-
-function stopCamera() {
-  clearDetection();
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  video.srcObject = null;
-}
-
-// ── Detection loop ──
-const OPTS = new faceapi.TinyFaceDetectorOptions({ inputSize:224, scoreThreshold:0.45 });
-
-function startDetection() {
-  clearDetection();
-  setRing('scanning');
-  setUI({ icon:'👁', txt:'Scanning for your face…', sub:'Position yourself in the circle', confTxt:'Scanning…', confColor:'#6B7280', progW:10, btnTxt:'Capture Manually', btnDis:true, liveness:null });
-
-  detInterval = setInterval(async () => {
-    if (!video.readyState || isProcessing) return;
-    try {
-      const det = await faceapi.detectSingleFace(video, OPTS)
-        .withFaceLandmarks().withFaceDescriptor();
-
-      if (det) {
-        const score = Math.round(det.detection.score * 100);
-        const good  = det.detection.score >= MIN_CONF;
-        conf.textContent = `${score}% confidence`;
-        conf.style.color = good ? '#10B981' : '#F59E0B';
-
-        if (!isProcessing) {
-          setRing('detecting');
-          setUI({ icon:'😊', txt:'Face detected!', sub:'Hold still…', progW: Math.min(40 + score/2, 80), btnDis:false });
-
-          // Liveness cue cycling
-          if (!livenessCheckDone && stableTicks === 0) {
-            livCue.style.display = 'block';
-            livCue.textContent   = LIVENESS[livenessPhase % LIVENESS.length];
-          }
-
-          stableTicks++;
-          if (stableTicks >= STABLE_NEEDED && !autoCapTimer) {
-            livenessCheckDone = true;
-            livCue.style.display = 'none';
-            startCountdown(det);
-          }
-        }
-      } else {
-        stableTicks = 0;
-        clearCountdown();
-        if (!isProcessing) {
-          setRing('scanning');
-          setUI({ icon:'👁', txt:'Looking for face…', sub:'Make sure you are in good light', confTxt:'Scanning…', confColor:'#6B7280', progW:10, btnDis:true, liveness:null });
-        }
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+    
+    stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'user', width: 360, height: 360 }, 
+      audio: false 
+    });
+    video.srcObject = stream;
+    
+    lo.classList.add('hidden');
+    setUI('Scanning...', 'Keep your face visible', 10, '#2076C7');
+    postRN({ type: 'ready' });
+    
+    // High-speed scan: 100ms interval
+    detInterval = setInterval(async () => {
+      if (isProcessing || video.readyState < 2) return;
+      
+      const det = await faceapi.detectSingleFace(video, SCAN_OPTS);
+      if (det && det.score > 0.7) {
+        isProcessing = true;
+        capture();
       }
-    } catch(e) {}
-  }, 500);
+    }, 100);
+    
+  } catch (e) {
+    setUI('Error', e.message, 0, '#EF4444');
+    postRN({ type: 'error', error: e.message });
+  }
 }
 
-function clearDetection() {
-  clearInterval(detInterval); detInterval = null;
-  clearCountdown();
-}
-
-function startCountdown(lastDet) {
-  cdownSec = 2;
-  cdown.textContent = cdownSec;
-  cdown.classList.add('vis');
-  setUI({ txt:'Capturing in ' + cdownSec + 's…' });
-
-  cdownTimer = setInterval(() => {
-    cdownSec--;
-    cdown.textContent = cdownSec;
-    setUI({ txt:'Capturing in ' + cdownSec + 's…', progW:90 });
-    if (cdownSec <= 0) {
-      clearCountdown();
-      capture();
-    }
-  }, 1000);
-}
-
-function clearCountdown() {
-  clearInterval(cdownTimer); cdownTimer = null;
-  if (autoCapTimer) { clearTimeout(autoCapTimer); autoCapTimer = null; }
-  cdown.classList.remove('vis');
-}
-
-// ── Capture ──
 async function capture() {
-  if (isProcessing || !modelsLoaded) return;
-  isProcessing = true;
-  clearDetection();
-  setRing('detecting');
-  setUI({ icon:'🔍', txt:'Verifying identity…', sub:'Please hold still', confTxt:'Analysing…', confColor:'#2076C7', progW:90, btnDis:true, btnTxt:'Verifying…', liveness:null });
-
+  setUI('Verifying...', 'One moment...', 80, '#F59E0B');
+  faceOval.classList.add('lit');
+  arc.classList.remove('spinning');
+  
   try {
-    const hiOpts = new faceapi.TinyFaceDetectorOptions({ inputSize:320, scoreThreshold:0.45 });
-    const det = await faceapi.detectSingleFace(video, hiOpts)
-      .withFaceLandmarks().withFaceDescriptor();
-
+    // Single heavy pass for descriptor
+    const det = await faceapi.detectSingleFace(video, SCAN_OPTS).withFaceLandmarks().withFaceDescriptor();
+    
     if (!det) {
-      handleFailure('No face detected. Reposition and try again.');
+      isProcessing = false;
+      faceOval.classList.remove('lit');
+      arc.classList.add('spinning');
       return;
     }
 
-    if (window.FACE_OP === 'checkin' || window.FACE_OP === 'checkout') {
-      if (!window.USER_FACE_DESCRIPTOR || window.USER_FACE_DESCRIPTOR.length === 0) {
-        handleFailure('Face ID not registered. Please register in Profile.');
-        return;
-      }
-      const registeredDesc = new Float32Array(Object.values(window.USER_FACE_DESCRIPTOR));
-      const dist = faceapi.euclideanDistance(det.descriptor, registeredDesc);
-      if (dist > 0.50) {
-        handleFailure('Face ID does not match. Please try again.');
-        return;
+    if (window.FACE_OP !== 'register') {
+      const saved = window.USER_FACE_DESCRIPTOR;
+      if (saved) {
+        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(Object.values(saved)));
+        if (dist > 0.55) {
+          setUI('No Match', 'Try again', 0, '#EF4444');
+          setTimeout(() => { isProcessing = false; setUI('Scanning...', 'Try again', 10, '#2076C7'); }, 1500);
+          return;
+        }
       }
     }
 
-    const score = Math.round(det.detection.score * 100);
-
-    // Capture frame as base64
     const canvas = document.createElement('canvas');
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    const b64 = canvas.toDataURL('image/jpeg', 0.75);
-
-    setRing('success');
-    setUI({ icon:'✅', txt:'Captured!', sub:'Sending for verification…', progW:100, confTxt: score + '% confidence', confColor:'#10B981' });
-
-    // Small delay to show success state
-    await new Promise(r => setTimeout(r, 400));
-
-    postRN({ type:'descriptor', descriptor: Array.from(det.descriptor), image: b64 });
-
-  } catch(e) {
-    handleFailure('Capture error. Please retry.');
-  }
-}
-
-function handleFailure(msg) {
-  isProcessing = false;
-  setRing('failed');
-  setUI({ icon:'❌', txt:'Verification failed', sub: msg, confTxt:'Try again', confColor:'#EF4444', progW:0, btnTxt:'Retry', btnDis:false, liveness:null });
-  postRN({ type:'error', error: msg });
-}
-
-function reset() {
-  isProcessing = false;
-  stableTicks  = 0;
-  livenessPhase++;
-  livenessCheckDone = false;
-  clearCountdown();
-  startDetection();
-}
-
-// ── Init ──
-async function init() {
-  try {
-    await loadModels();
-    lText.textContent = 'Starting camera…';
-    lSub.textContent  = '';
-    await startCamera();
-    lo.classList.add('hidden');
-    setUI({ icon:'👁', txt:'Ready', sub:'Position your face in the circle', btnTxt:'Capture Manually', btnDis:false, progW:5 });
-    postRN({ type:'ready' });
-    hdrSub.textContent = 'Align your face — auto-capture in 1.5 s';
-    startDetection();
-  } catch(e) {
-    lo.classList.add('hidden');
-    // Categorise the error properly
-    const isCameraPermission = e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError';
-    const isCameraNotFound   = e.name === 'NotFoundError'   || e.name === 'DevicesNotFoundError';
-    const isCameraSupport    = e.name === 'NotSupportedError';
-    const isCameraUndefined  = e instanceof TypeError && e.message && e.message.toLowerCase().includes('getusermedia');
-    const isCameraError      = isCameraPermission || isCameraNotFound || isCameraSupport || isCameraUndefined;
-
-    let title = 'Model load failed';
-    let sub   = `Error: ${e.message}`;
-    if (isCameraPermission) {
-      title = 'Camera permission denied';
-      sub   = 'Please allow camera access in your device settings, then retry.';
-    } else if (isCameraNotFound) {
-      title = 'No camera found';
-      sub   = 'Could not find a front-facing camera on this device.';
-    } else if (isCameraSupport || isCameraUndefined) {
-      title = 'Camera unavailable';
-      sub   = 'The camera API is not accessible in this context. Ensure the app has camera permission.';
-    }
-
-    setUI({
-      icon: '⚠️',
-      txt:  title,
-      sub:  sub,
-      confTxt:'Error', confColor:'#EF4444', progW:0,
-      btnTxt:'Retry', btnDis:false
+    canvas.width = 300; canvas.height = 300;
+    canvas.getContext('2d').drawImage(video, 0, 0, 300, 300);
+    
+    setUI('Success!', 'Redirecting...', 100, '#10B981');
+    postRN({ 
+      type: 'descriptor', 
+      descriptor: Array.from(det.descriptor), 
+      image: canvas.toDataURL('image/jpeg', 0.5) 
     });
-    setRing('failed');
-    postRN({ type:'error', error: `${title}: ${e.message || 'Unknown error'}` });
+    
+  } catch (e) {
+    isProcessing = false;
   }
 }
 
-// ── Button handlers ──
-mainBtn.addEventListener('click', () => {
-  if (mainBtn.textContent.includes('Retry') || mainBtn.textContent.includes('retry')) {
-    // Reset state and reinitialise
-    isProcessing = false;
-    stableTicks  = 0;
-    livenessCheckDone = false;
-    livenessPhase++;
-    clearCountdown();
-    // Show overlay for re-init
-    lo.classList.remove('hidden');
-    lo.style.opacity = '1';
-    lo.style.pointerEvents = 'auto';
-    lText.textContent = modelsLoaded ? 'Starting camera…' : `Retrying… (attempt ${++retryCount + 1})`;
-    lSub.textContent = modelsLoaded ? '' : 'Loading AI models';
-    init();
-  } else {
-    capture();
-  }
-});
+window.startVerification = () => { isProcessing = false; faceOval.classList.remove('lit'); };
+document.getElementById('cancelBtn').onclick = () => {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  postRN({ type: 'cancel' });
+};
 
-cancelBtn.addEventListener('click', () => {
-  stopCamera();
-  postRN({ type:'cancel' });
-});
-
-// ── Listen to RN messages (e.g. 'stop') ──
-window.addEventListener('message', e => {
-  try {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'stop') stopCamera();
-  } catch(_) {}
-});
-document.addEventListener('message', e => {
-  try {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'stop') stopCamera();
-  } catch(_) {}
-});
-
-window.addEventListener('beforeunload', stopCamera);
-
-init();
+start();
 </script>
 </body>
 </html>

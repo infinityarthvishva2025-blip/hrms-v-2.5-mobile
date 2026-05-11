@@ -29,7 +29,7 @@ const LeaveTabs = ({ navigation }) => {
     if (isAdmin) {
       baseTabs.push(
         { id: 'approvals', label: 'Approvals', icon: 'checkmark-done-circle-outline' },
-        { id: 'team', label: 'Team Feed', icon: 'people-outline' }
+        // { id: 'team', label: 'Team Feed', icon: 'people-outline' }
       );
     }
     return baseTabs;
@@ -49,7 +49,7 @@ const LeaveTabs = ({ navigation }) => {
       case 'overview': return <MyLeavesScreen navigation={navigation} />;
       case 'apply': return <ApplyLeaveScreen navigation={navigation} />;
       case 'approvals': return <LeaveApprovalScreen navigation={navigation} />;
-      case 'team': return <LeaveDashboardScreen navigation={navigation} />;
+      // case 'team': return <LeaveDashboardScreen navigation={navigation} />;
       default: return null;
     }
   }, [navigation]);

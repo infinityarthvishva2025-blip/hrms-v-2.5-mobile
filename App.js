@@ -4,58 +4,55 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
+import * as SplashScreen from 'expo-splash-screen';
 import { colors } from './src/constants/colors';
 
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider } from './src/context/AuthContext';
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* reloading the app might trigger some errors here, safe to ignore */
+});
 
 const { width } = Dimensions.get('window');
 
 const toastConfig = {
   success: ({ text1, text2 }) => (
     <View style={styles.toastContainer}>
-      <View style={styles.toastCard}>
-        <View style={[styles.statusAccent, { backgroundColor: '#0D9488' }]} />
-        <View style={styles.toastContent}>
-          <View style={[styles.iconBg, { backgroundColor: 'rgba(13, 148, 136, 0.1)' }]}>
-            <Ionicons name="checkmark-circle" size={24} color="#0D9488" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.toastTitle}>{text1}</Text>
-            {text2 && <Text style={styles.toastMessage}>{text2}</Text>}
-          </View>
+      <View style={[styles.toastCard, { borderLeftColor: '#10B981' }]}>
+        <View style={[styles.iconBg, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+          <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+        </View>
+        <View style={styles.textContainer}>
+          <Text style={styles.toastTitle}>{text1}</Text>
+          {text2 && <Text style={styles.toastMessage} numberOfLines={2}>{text2}</Text>}
         </View>
       </View>
     </View>
   ),
   error: ({ text1, text2 }) => (
     <View style={styles.toastContainer}>
-      <View style={styles.toastCard}>
-        <View style={[styles.statusAccent, { backgroundColor: '#F43F5E' }]} />
-        <View style={styles.toastContent}>
-          <View style={[styles.iconBg, { backgroundColor: 'rgba(244, 63, 94, 0.1)' }]}>
-            <Ionicons name="alert-circle" size={24} color="#F43F5E" />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.toastTitle}>{text1}</Text>
-            {text2 && <Text style={styles.toastMessage}>{text2}</Text>}
-          </View>
+      <View style={[styles.toastCard, { borderLeftColor: '#EF4444' }]}>
+        <View style={[styles.iconBg, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+          <Ionicons name="alert-circle" size={20} color="#EF4444" />
+        </View>
+        <View style={styles.textContainer}>
+          <Text style={styles.toastTitle}>{text1}</Text>
+          {text2 && <Text style={styles.toastMessage} numberOfLines={2}>{text2}</Text>}
         </View>
       </View>
     </View>
   ),
   info: ({ text1, text2 }) => (
     <View style={styles.toastContainer}>
-      <View style={styles.toastCard}>
-        <View style={[styles.statusAccent, { backgroundColor: colors.primary }]} />
-        <View style={styles.toastContent}>
-          <View style={[styles.iconBg, { backgroundColor: colors.primary + '15' }]}>
-            <Ionicons name="information-circle" size={24} color={colors.primary} />
-          </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.toastTitle}>{text1}</Text>
-            {text2 && <Text style={styles.toastMessage}>{text2}</Text>}
-          </View>
+      <View style={[styles.toastCard, { borderLeftColor: colors.primary }]}>
+        <View style={[styles.iconBg, { backgroundColor: colors.primary + '15' }]}>
+          <Ionicons name="information-circle" size={20} color={colors.primary} />
+        </View>
+        <View style={styles.textContainer}>
+          <Text style={styles.toastTitle}>{text1}</Text>
+          {text2 && <Text style={styles.toastMessage} numberOfLines={2}>{text2}</Text>}
         </View>
       </View>
     </View>
@@ -70,65 +67,57 @@ export default function App() {
           <AppNavigator />
         </NavigationContainer>
       </AuthProvider>
-      <Toast config={toastConfig} topOffset={60} />
+      <Toast config={toastConfig} topOffset={50} visibilityTime={3000} />
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   toastContainer: {
-    width: width * 0.92,
+    width: width * 0.85,
     alignItems: 'center',
     justifyContent: 'center',
   },
   toastCard: {
     width: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    flexDirection: 'row',
-    overflow: 'hidden',
-    // Premium Multi-Layer Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.03)',
-  },
-  statusAccent: {
-    width: 6,
-    height: '100%',
-  },
-  toastContent: {
-    flex: 1,
+    borderRadius: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 18,
-    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    // Premium Minimal Shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    borderLeftWidth: 4,
   },
   iconBg: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
+    marginRight: 12,
   },
   textContainer: {
     flex: 1,
+    justifyContent: 'center',
   },
   toastTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#111827',
-    letterSpacing: -0.2,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1F2937',
+    letterSpacing: -0.3,
   },
   toastMessage: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#6B7280',
-    fontWeight: '600',
-    marginTop: 2,
-    lineHeight: 18,
+    fontWeight: '500',
+    marginTop: 1,
   },
 });

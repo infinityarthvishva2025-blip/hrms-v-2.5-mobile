@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -6,13 +6,12 @@ import {
   KeyboardAvoidingView, 
   Platform, 
   ScrollView, 
-  Dimensions, 
   TouchableOpacity, 
   TextInput, 
   ActivityIndicator, 
   StatusBar,
   Modal,
-  Image
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,22 +20,74 @@ import { forgotPassword } from '../../api/auth.api';
 import { colors } from '../../constants/colors';
 import Toast from 'react-native-toast-message';
 import { LinearGradient } from 'expo-linear-gradient';
+
 const LOGO_IMG = require('../../../assets/images/logo3.6.png');
 
-const { width, height } = Dimensions.get('window');
+// ─── Defined OUTSIDE LoginScreen to prevent remount on each render ───────────
+const InputField = ({
+  label, icon, value, onChangeText, placeholder,
+  isPassword, isShowPassword, toggleShowPassword,
+  focusKey, focusedInput, setFocusedInput, autoCapitalize
+}) => {
+  const isFocused = focusedInput === focusKey;
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={[styles.inputLabel, isFocused && styles.inputLabelFocused]}>
+        {label}
+      </Text>
+      <View style={[styles.inputContainer, isFocused && styles.inputContainerFocused]}>
+        <Ionicons
+          name={icon}
+          size={18}
+          color={isFocused ? colors.primary : '#94A3B8'}
+          style={styles.inputIcon}
+        />
+        <TextInput
+          placeholder={placeholder}
+          placeholderTextColor="#B0BAC9"
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={() => setFocusedInput(focusKey)}
+          onBlur={() => setFocusedInput(null)}
+          secureTextEntry={isPassword && !isShowPassword}
+          style={styles.textInput}
+          autoCapitalize={autoCapitalize || 'none'}
+          selectionColor={colors.primary}
+          autoCorrect={false}
+          spellCheck={false}
+        />
+        {isPassword && (
+          <TouchableOpacity
+            onPress={toggleShowPassword}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons
+              name={isShowPassword ? 'eye-off-outline' : 'eye-outline'}
+              size={18}
+              color="#94A3B8"
+            />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+};
 
+// ─── Login Screen ─────────────────────────────────────────────────────────────
 const LoginScreen = () => {
   const { login } = useAuth();
   const insets = useSafeAreaInsets();
+
   const [employeeCode, setEmployeeCode] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  
-  // Forgot Password States
+
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotEmpCode, setForgotEmpCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
+
   const [focusedInput, setFocusedInput] = useState(null);
 
   const handleLogin = async () => {
@@ -44,7 +95,6 @@ const LoginScreen = () => {
       Toast.show({ type: 'error', text1: 'Missing Credentials', text2: 'Please enter both employee code and password' });
       return;
     }
-
     try {
       setLoading(true);
       await login({ employeeCode: employeeCode.trim().toUpperCase(), password });
@@ -52,7 +102,7 @@ const LoginScreen = () => {
       Toast.show({
         type: 'error',
         text1: 'Login Failed',
-        text2: error?.response?.data?.message || 'Invalid credentials'
+        text2: error?.response?.data?.message || 'Invalid credentials',
       });
     } finally {
       setLoading(false);
@@ -60,173 +110,120 @@ const LoginScreen = () => {
   };
 
   const handleForgotPassword = async () => {
-    if (!forgotEmail || !password) {
+    if (!forgotEmpCode || !newPassword) {
       Toast.show({ type: 'error', text1: 'Missing Fields', text2: 'Please enter Employee Code and New Password' });
       return;
     }
-    
+    if (newPassword.length < 6) {
+      Toast.show({ type: 'error', text1: 'Too Short', text2: 'Password must be at least 6 characters' });
+      return;
+    }
     try {
       setForgotLoading(true);
-      await forgotPassword({ 
-        employeeCode: forgotEmail.trim().toUpperCase(), 
-        newPassword: password 
+      await forgotPassword({
+        employeeCode: forgotEmpCode.trim().toUpperCase(),
+        newPassword,
       });
-      
       setForgotLoading(false);
       setShowForgotModal(false);
-      Toast.show({ 
-        type: 'success', 
-        text1: 'Password Reset', 
-        text2: 'Your password has been updated. You can now sign in.' 
-      });
-      setForgotEmail('');
-      setPassword('');
+      setForgotEmpCode('');
+      setNewPassword('');
+      Toast.show({ type: 'success', text1: 'Password Reset', text2: 'You can now sign in with your new password.' });
     } catch (error) {
       setForgotLoading(false);
       Toast.show({
         type: 'error',
         text1: 'Reset Failed',
-        text2: error?.response?.data?.message || 'Could not reset password'
+        text2: error?.response?.data?.message || 'Could not reset password',
       });
     }
   };
 
+  // Shared props passed to every InputField
+  const fieldProps = { focusedInput, setFocusedInput };
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      
-      <LinearGradient
-        colors={['#F8FAFC', '#EFF6FF', '#F8FAFC']}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
+      <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
 
-      <KeyboardAvoidingView 
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView 
+      <LinearGradient colors={['#FFFFFF', '#F8FAFC', '#F0F4FF']} style={StyleSheet.absoluteFill} />
+
+      <KeyboardAvoidingView style={styles.keyboardView} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
           contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 40 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Header Branding (Premium) */}
+          {/* ── Brand ── */}
           <View style={styles.header}>
-             <View style={styles.logoContainer}>
-                <Image 
-                  source={LOGO_IMG} 
-                  style={styles.logoImage} 
-                  resizeMode="contain"
-                />
-             </View>
-             <Text style={styles.brandName}>HRMS Portal</Text>
-             <Text style={styles.brandTagline}>Intelligent Workforce Management</Text>
+            <View style={styles.logoBox}>
+              <Image source={LOGO_IMG} style={styles.logoImage} resizeMode="contain" />
+            </View>
+            <Text style={styles.brandTitle}>
+              Infinity{' '}
+              <Text style={{ color: colors.primary }}>HRMS</Text>
+            </Text>
+            <Text style={styles.brandSub}>Intelligent Workforce Management</Text>
           </View>
 
-          {/* Elevated Form Card (Light Mode) */}
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Welcome Back</Text>
-            <Text style={styles.formSubtitle}>Sign in to continue to your workspace</Text>
+          {/* ── Card ── */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Welcome Back 👋</Text>
+            <Text style={styles.cardSub}>Sign in to continue</Text>
 
-            <View style={styles.inputGroup}>
-               <Text style={styles.inputLabel}>EMPLOYEE CODE</Text>
-               <View style={[
-                  styles.inputContainer, 
-                  focusedInput === 'code' && { borderColor: '#6366F1', backgroundColor: '#fff' }
-                ]}>
-                  <Ionicons 
-                    name="person-outline" 
-                    size={22} 
-                    color={focusedInput === 'code' ? '#6366F1' : '#94A3B8'} 
-                    style={styles.inputIcon} 
-                  />
-                  <TextInput
-                    placeholder="Employee Code"
-                    placeholderTextColor="#94A3B8"
-                    value={employeeCode}
-                    onChangeText={setEmployeeCode}
-                    onFocus={() => setFocusedInput('code')}
-                    onBlur={() => setFocusedInput(null)}
-                    style={styles.textInput}
-                    autoCapitalize="characters"
-                    selectionColor="#6366F1"
-                  />
-               </View>
-            </View>
+            <InputField
+              {...fieldProps}
+              label="EMPLOYEE CODE"
+              icon="person-outline"
+              value={employeeCode}
+              onChangeText={setEmployeeCode}
+              placeholder="e.g. EMP101"
+              focusKey="code"
+              autoCapitalize="characters"
+            />
 
-            <View style={styles.inputGroup}>
-               <Text style={styles.inputLabel}>PASSWORD</Text>
-               <View style={[
-                  styles.inputContainer, 
-                  focusedInput === 'password' && { borderColor: '#6366F1', backgroundColor: '#fff' }
-                ]}>
-                  <Ionicons 
-                    name="lock-closed-outline" 
-                    size={22} 
-                    color={focusedInput === 'password' ? '#6366F1' : '#94A3B8'} 
-                    style={styles.inputIcon} 
-                  />
-                  <TextInput
-                    placeholder="Password"
-                    placeholderTextColor="#94A3B8"
-                    value={password}
-                    onChangeText={setPassword}
-                    onFocus={() => setFocusedInput('password')}
-                    onBlur={() => setFocusedInput(null)}
-                    secureTextEntry={!showPassword}
-                    style={styles.textInput}
-                    selectionColor="#6366F1"
-                  />
-                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                     <Ionicons 
-                        name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                        size={22} 
-                        color="#94A3B8" 
-                     />
-                  </TouchableOpacity>
-               </View>
-            </View>
+            <InputField
+              {...fieldProps}
+              label="PASSWORD"
+              icon="lock-closed-outline"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Your password"
+              isPassword
+              isShowPassword={showPassword}
+              toggleShowPassword={() => setShowPassword(p => !p)}
+              focusKey="password"
+            />
 
-            <TouchableOpacity 
-              style={styles.forgotBtn}
-              onPress={() => setShowForgotModal(true)}
-            >
-               <Text style={styles.forgotText}>Forgot Password?</Text>
+            <TouchableOpacity style={styles.forgotBtn} onPress={() => setShowForgotModal(true)}>
+              <Text style={styles.forgotText}>Forgot Password?</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              activeOpacity={0.8} 
+            <TouchableOpacity
+              activeOpacity={0.85}
               onPress={handleLogin}
               disabled={loading}
-              style={styles.loginBtnContainer}
+              style={[styles.loginBtnWrap, loading && { opacity: 0.7 }]}
             >
-               <LinearGradient
-                 colors={colors.gradients.primary}
-                 style={styles.loginBtn}
-                 start={{ x: 0, y: 0 }}
-                 end={{ x: 1, y: 0 }}
-               >
-                 {loading ? (
-                   <ActivityIndicator color="#fff" />
-                 ) : (
-                   <>
-                     <Text style={styles.loginBtnText}>Sign In to Portal</Text>
-                     <Ionicons name="arrow-forward" size={20} color="#fff" />
-                   </>
-                 )}
-               </LinearGradient>
+              <LinearGradient
+                colors={colors.gradients.primary}
+                style={styles.loginBtn}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                {loading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={styles.loginBtnText}>Sign In</Text>
+                }
+              </LinearGradient>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.footer}>
-             <Text style={styles.footerText}>Powered by HRMS Enterprise Cloud</Text>
-          </View>
-
+          <Text style={styles.footerText}>Secure Enterprise Login · v3.6</Text>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Forgot Password Modal */}
+      {/* ── Forgot Password Modal ── */}
       <Modal
         visible={showForgotModal}
         transparent
@@ -234,207 +231,142 @@ const LoginScreen = () => {
         onRequestClose={() => setShowForgotModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-               <View style={styles.modalIconBg}>
-                  <Ionicons name="help-circle-outline" size={32} color="#6366F1" />
-               </View>
-               <Text style={styles.modalTitle}>Reset Password</Text>
-               <Text style={styles.modalSubtitle}>Enter your Employee Code and the new secure password you wish to set.</Text>
-            </View>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={StyleSheet.absoluteFill}
+            onPress={() => !forgotLoading && setShowForgotModal(false)}
+          />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+            <Text style={styles.modalSub}>Enter your employee code and a new password</Text>
 
-            <View style={styles.modalBody}>
-               <View style={[
-                  styles.modalInputContainer,
-                  focusedInput === 'forgotCode' && { borderColor: '#6366F1', backgroundColor: '#fff' }
-               ]}>
-                  <Ionicons 
-                    name="person-outline" 
-                    size={22} 
-                    color={focusedInput === 'forgotCode' ? '#6366F1' : '#94A3B8'} 
-                    style={styles.inputIcon} 
-                  />
-                  <TextInput
-                    placeholder="Employee Code"
-                    placeholderTextColor="#94A3B8"
-                    value={forgotEmail}
-                    onChangeText={setForgotEmail}
-                    onFocus={() => setFocusedInput('forgotCode')}
-                    onBlur={() => setFocusedInput(null)}
-                    style={styles.modalInput}
-                    autoCapitalize="characters"
-                  />
-               </View>
+            <InputField
+              {...fieldProps}
+              label="EMPLOYEE CODE"
+              icon="person-outline"
+              value={forgotEmpCode}
+              onChangeText={setForgotEmpCode}
+              placeholder="e.g. EMP101"
+              focusKey="forgotCode"
+              autoCapitalize="characters"
+            />
 
-               <View style={[
-                  styles.modalInputContainer,
-                  focusedInput === 'forgotPass' && { borderColor: '#6366F1', backgroundColor: '#fff' }
-               ]}>
-                  <Ionicons 
-                    name="lock-closed-outline" 
-                    size={22} 
-                    color={focusedInput === 'forgotPass' ? '#6366F1' : '#94A3B8'} 
-                    style={styles.inputIcon} 
-                  />
-                  <TextInput
-                    placeholder="New Secure Password"
-                    placeholderTextColor="#94A3B8"
-                    value={password}
-                    onChangeText={setPassword}
-                    onFocus={() => setFocusedInput('forgotPass')}
-                    onBlur={() => setFocusedInput(null)}
-                    secureTextEntry
-                    style={styles.modalInput}
-                  />
-               </View>
+            <InputField
+              {...fieldProps}
+              label="NEW PASSWORD"
+              icon="shield-checkmark-outline"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder="Min 6 characters"
+              isPassword
+              focusKey="forgotPass"
+            />
 
-               <TouchableOpacity 
-                  style={styles.modalActionBtn}
-                  onPress={handleForgotPassword}
-                  disabled={forgotLoading}
-               >
-                  <LinearGradient
-                    colors={colors.gradients.primary}
-                    style={styles.modalBtnGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  >
-                    {forgotLoading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.modalBtnText}>Reset Password</Text>
-                    )}
-                  </LinearGradient>
-               </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.loginBtnWrap, { marginTop: 8 }, forgotLoading && { opacity: 0.7 }]}
+              onPress={handleForgotPassword}
+              disabled={forgotLoading}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={colors.gradients.primary}
+                style={styles.loginBtn}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                {forgotLoading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={styles.loginBtnText}>Reset Password</Text>
+                }
+              </LinearGradient>
+            </TouchableOpacity>
 
-               <TouchableOpacity 
-                  style={styles.modalCancelBtn}
-                  onPress={() => setShowForgotModal(false)}
-               >
-                  <Text style={styles.modalCancelText}>Back to Login</Text>
-               </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowForgotModal(false)}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
-
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  container: { flex: 1, backgroundColor: '#fff' },
   keyboardView: { flex: 1 },
-  scrollContent: { flexGrow: 1, padding: 24, paddingBottom: 60, justifyContent: 'center' },
-  
-  header: { alignItems: 'center', marginBottom: 40 },
-  logoContainer: { 
-    width: 110, height: 110, borderRadius: 30, 
-    backgroundColor: '#fff', 
+  scrollContent: { flexGrow: 1, padding: 22, paddingBottom: 40 },
+
+  // Header
+  header: { alignItems: 'center', marginBottom: 28 },
+  logoBox: {
+    width: 76, height: 76, borderRadius: 20,
+    backgroundColor: '#fff',
     justifyContent: 'center', alignItems: 'center',
-    marginBottom: 20,
-    shadowColor: '#6366F1', 
-    shadowOffset: { width: 0, height: 12 }, 
-    shadowOpacity: 0.15, 
-    shadowRadius: 20,
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.1)'
+    marginBottom: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08, shadowRadius: 10, elevation: 4,
+    borderWidth: 1, borderColor: '#EAEDF3',
   },
-  logoImage: { width: 80, height: 80 },
-  brandName: { fontSize: 32, fontWeight: '900', color: '#1E293B', letterSpacing: -1 },
-  brandTagline: { fontSize: 14, fontWeight: '600', color: '#64748B', marginTop: 4 },
+  logoImage: { width: 52, height: 52 },
+  brandTitle: { fontSize: 22, fontWeight: '900', color: '#1E293B', letterSpacing: -0.3 },
+  brandSub: { fontSize: 12, color: '#94A3B8', marginTop: 3, fontWeight: '500' },
 
-  formCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 36,
-    padding: 28,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.06,
-    shadowRadius: 40,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: '#F1F5F9'
+  // Card
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 22,
+    padding: 22,
+    shadowColor: '#1E3A8A', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06, shadowRadius: 18, elevation: 4,
+    borderWidth: 1, borderColor: '#F0F2F8',
   },
-  formTitle: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
-  formSubtitle: { fontSize: 14, fontWeight: '500', color: '#64748B', marginTop: 6, marginBottom: 32 },
+  cardTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  cardSub: { fontSize: 13, color: '#64748B', marginTop: 2, marginBottom: 22 },
 
-  inputGroup: { marginBottom: 24 },
-  inputLabel: { fontSize: 11, fontWeight: '800', color: '#6366F1', letterSpacing: 1.2, marginBottom: 10, textTransform: 'uppercase' },
-  inputContainer: { 
-    flexDirection: 'row', alignItems: 'center', 
-    backgroundColor: '#F8FAFC', 
-    height: 62, borderRadius: 20, 
-    borderWidth: 1.5, borderColor: '#E2E8F0',
-    paddingHorizontal: 20
+  // Input
+  inputGroup: { marginBottom: 14 },
+  inputLabel: { fontSize: 10, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.6, marginBottom: 6 },
+  inputLabelFocused: { color: colors.primary },
+  inputContainer: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    height: 50, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#E8ECF4',
+    paddingHorizontal: 13,
   },
-  inputIcon: { marginRight: 14 },
-  textInput: { flex: 1, color: '#0F172A', fontSize: 16, fontWeight: '600' },
-  
-  forgotBtn: { alignSelf: 'flex-end', marginBottom: 32, marginTop: -12, padding: 8 },
-  forgotText: { fontSize: 14, fontWeight: '700', color: '#6366F1' },
+  inputContainerFocused: {
+    borderColor: colors.primary,
+    backgroundColor: '#fff',
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.12, shadowRadius: 6, elevation: 2,
+  },
+  inputIcon: { marginRight: 10 },
+  textInput: { flex: 1, color: '#1E293B', fontSize: 14, fontWeight: '600', paddingVertical: 0 },
 
-  loginBtnContainer: { 
-    shadowColor: '#6366F1', 
-    shadowOffset: { width: 0, height: 10 }, 
-    shadowOpacity: 0.35, 
-    shadowRadius: 15, 
-    elevation: 10 
+  // Forgot / Login
+  forgotBtn: { alignSelf: 'flex-end', marginTop: -2, marginBottom: 18, padding: 4 },
+  forgotText: { fontSize: 12, fontWeight: '700', color: colors.primary },
+  loginBtnWrap: {
+    borderRadius: 12, overflow: 'hidden',
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22, shadowRadius: 8, elevation: 4,
   },
-  loginBtn: { 
-    height: 64, 
-    borderRadius: 22, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 12 
-  },
-  loginBtnText: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  loginBtn: { height: 50, justifyContent: 'center', alignItems: 'center' },
+  loginBtnText: { fontSize: 15, fontWeight: '800', color: '#fff', letterSpacing: 0.2 },
 
-  footer: { alignItems: 'center', marginTop: 40 },
-  footerText: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1.5 },
+  footerText: { textAlign: 'center', marginTop: 28, fontSize: 11, color: '#CBD5E1', fontWeight: '500' },
 
-  // Modal Styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalContent: { 
-    backgroundColor: '#fff', 
-    borderRadius: 36, 
-    padding: 32, 
-    width: '100%', 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 25 }, 
-    shadowOpacity: 0.2, 
-    shadowRadius: 50, 
-    elevation: 15 
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 20 },
+  modalCard: {
+    backgroundColor: '#fff', borderRadius: 22, padding: 22,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15, shadowRadius: 24, elevation: 12,
   },
-  modalHeader: { alignItems: 'center', marginBottom: 28 },
-  modalIconBg: { 
-    width: 64, height: 64, 
-    borderRadius: 22, 
-    backgroundColor: '#6366F115', 
-    justifyContent: 'center', alignItems: 'center', 
-    marginBottom: 20 
-  },
-  modalTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
-  modalSubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', marginTop: 10, lineHeight: 22 },
-  modalBody: { gap: 20 },
-  modalInputContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#F8FAFC', 
-    height: 62, 
-    borderRadius: 20, 
-    borderWidth: 1.5, 
-    borderColor: '#E2E8F0', 
-    paddingHorizontal: 20 
-  },
-  modalInput: { flex: 1, color: '#0F172A', fontSize: 16, fontWeight: '600' },
-  modalActionBtn: { borderRadius: 20, overflow: 'hidden' },
-  modalBtnGradient: { height: 62, justifyContent: 'center', alignItems: 'center' },
-  modalBtnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
-  modalCancelBtn: { padding: 10, alignItems: 'center' },
-  modalCancelText: { color: '#64748B', fontWeight: '700', fontSize: 15 }
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#1E293B' },
+  modalSub: { fontSize: 13, color: '#64748B', marginTop: 3, marginBottom: 18 },
+  modalCancelBtn: { marginTop: 4, padding: 12, alignItems: 'center' },
+  modalCancelText: { color: '#94A3B8', fontWeight: '700', fontSize: 13 },
 });
 
 export default LoginScreen;

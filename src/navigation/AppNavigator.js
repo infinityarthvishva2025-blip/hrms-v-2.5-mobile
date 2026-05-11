@@ -7,11 +7,14 @@ import * as Notifications from 'expo-notifications';
 
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
+import PremiumSplashScreen from '../components/common/PremiumSplashScreen';
+import * as SplashScreen from 'expo-splash-screen';
 
 const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => {
   const { user, loading } = useAuth();
+  const [splashFinished, setSplashFinished] = React.useState(false);
 
   // Register for notifications and handle listeners
   React.useEffect(() => {
@@ -37,8 +40,24 @@ const AppNavigator = () => {
     }
   }, [user]);
 
-  if (loading) {
-    return <LoadingSpinner fullScreen />;
+  // Handle native splash screen hiding
+  React.useEffect(() => {
+    const prepare = async () => {
+      try {
+        // If JS Splash has finished its minimum time, hide the native one
+        if (splashFinished) {
+          await SplashScreen.hideAsync();
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+    prepare();
+  }, [splashFinished]);
+
+  // Show Premium Splash until BOTH the auth check is done AND the animation minimum time is met
+  if (loading || !splashFinished) {
+    return <PremiumSplashScreen onFinish={() => setSplashFinished(true)} />;
   }
 
   return (

@@ -58,6 +58,7 @@ const ProfileScreen = ({ navigation }) => {
   const [registeringFace, setRegisteringFace] = React.useState(false);
   const [htmlContent, setHtmlContent] = React.useState('');
   const webviewRef = React.useRef(null);
+  const modelsReadyRef = React.useRef(false);
 
   // Auto-refresh profile when screen is focused to sync with Web changes
   useFocusEffect(
@@ -104,14 +105,41 @@ const ProfileScreen = ({ navigation }) => {
     setShowFaceModal(true);
   };
 
+  // Start face session in WebView (sets op + starts camera)
+  const startFaceSession = React.useCallback(() => {
+    if (!webviewRef.current) return;
+    webviewRef.current.injectJavaScript(`
+      window.FACE_OP = 'register';
+      window.startVerification();
+      true;
+    `);
+  }, []);
+
+  // When modal opens and models are ready, start verification immediately
+  React.useEffect(() => {
+    if (showFaceModal && modelsReadyRef.current) {
+      setTimeout(startFaceSession, 200);
+    }
+  }, [showFaceModal, startFaceSession]);
+
+  // When modal closes, stop camera + reset UI (models stay warm)
+  React.useEffect(() => {
+    if (!showFaceModal && webviewRef.current) {
+      webviewRef.current.injectJavaScript(`
+        if (typeof resetAndStop === 'function') resetAndStop();
+        true;
+      `);
+    }
+  }, [showFaceModal]);
+
   const handleWebViewMessage = async (event) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === 'ready') {
-        webviewRef.current?.injectJavaScript(`
-          window.FACE_OP = 'register';
-          true;
-        `);
+        modelsReadyRef.current = true;
+        if (showFaceModal) {
+          setTimeout(startFaceSession, 200);
+        }
       } else if (msg.type === 'error') {
         Toast.show({ type: 'error', text1: 'Face Verification Error', text2: msg.error });
       } else if (msg.type === 'cancel') {
@@ -264,38 +292,31 @@ const ProfileScreen = ({ navigation }) => {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Face Verification Modal (WebView) */}
-      <Modal
-        isVisible={showFaceModal}
-        style={{ margin: 0 }}
-        animationIn="slideInUp"
-        animationOut="slideOutDown"
-        backdropOpacity={1}
-        backdropColor="#080C14"
-      >
-        <View style={{ flex: 1, backgroundColor: '#080C14', paddingTop: Platform.OS === 'ios' ? 40 : 0 }}>
-          {showFaceModal && !!htmlContent && (
-            <WebView
-              ref={webviewRef}
-              source={{ html: htmlContent, baseUrl: 'https://localhost' }}
-              originWhitelist={['*']}
-              allowFileAccessFromFileURLs={true}
-              allowUniversalAccessFromFileURLs={true}
-              mixedContentMode="always"
-              style={{ flex: 1, backgroundColor: '#080C14' }}
-              onMessage={handleWebViewMessage}
-              mediaPlaybackRequiresUserAction={false}
-              allowsInlineMediaPlayback={true}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              onPermissionRequest={(request) => {
-                // Auto-grant camera & mic permissions for face registration
-                request.grant(request.resources);
-              }}
-            />
-          )}
-        </View>
-      </Modal>
+      {/* Face Verification: Always-mounted WebView (models pre-load in background) */}
+      <View style={showFaceModal
+        ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, backgroundColor: '#080C14', paddingTop: Platform.OS === 'ios' ? 40 : 0 }
+        : { position: 'absolute', top: -9999, left: -9999, width, height: 700, zIndex: -1 }
+      }>
+        {!!htmlContent && (
+          <WebView
+            ref={webviewRef}
+            source={{ html: htmlContent, baseUrl: 'https://localhost' }}
+            originWhitelist={['*']}
+            allowFileAccessFromFileURLs={true}
+            allowUniversalAccessFromFileURLs={true}
+            mixedContentMode="always"
+            style={{ flex: 1, backgroundColor: '#080C14' }}
+            onMessage={handleWebViewMessage}
+            mediaPlaybackRequiresUserAction={false}
+            allowsInlineMediaPlayback={true}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            onPermissionRequest={(request) => {
+              request.grant(request.resources);
+            }}
+          />
+        )}
+      </View>
     </View>
   );
 };
