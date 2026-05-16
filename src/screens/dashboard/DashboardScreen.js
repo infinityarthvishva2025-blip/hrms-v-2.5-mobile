@@ -180,7 +180,7 @@ const DashboardScreen = ({ navigation }) => {
         {/* ---------- PREMIUM GRADIENT HEADER ---------- */}
         <View style={styles.headerWrapper}>
           <LinearGradient
-            colors={['#1E3A8A', '#0F766E']} // Deep Blue to Deep Teal
+            colors={['#2076C7', '#1CADA3']} // Deep Blue to Deep Teal
             style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}

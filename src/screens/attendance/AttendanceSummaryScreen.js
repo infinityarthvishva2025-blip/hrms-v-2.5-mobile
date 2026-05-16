@@ -15,6 +15,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, isSameDay } from 'date-fns';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors } from '../../constants/colors';
 import { getMySummary } from '../../api/attendance.api';
@@ -27,9 +28,12 @@ const { width } = Dimensions.get('window');
 
 const StatCard = ({ label, value, color, icon, loading }) => (
   <View style={styles.statCard}>
-    <View style={[styles.statIconBox, { backgroundColor: color + '15' }]}>
-      <Ionicons name={icon} size={14} color={color} />
-    </View>
+    <LinearGradient
+      colors={[color + '20', color + '05']}
+      style={styles.statIconBox}
+    >
+      <Ionicons name={icon} size={16} color={color} />
+    </LinearGradient>
     <View style={styles.statInfo}>
       <Text style={[styles.statValue, { color: colors.text }]}>{loading ? '-' : value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
@@ -87,8 +91,8 @@ const AttendanceSummaryScreen = ({ navigation }) => {
       case 'A': case 'ABSENT': return '#EF4444';
       case 'HD': case 'HALF DAY': return '#F59E0B';
       case 'WO': case 'WEEK OFF': return '#6366F1';
-      case 'H': case 'HOLIDAY': return '#3B82F6';
-      case 'COFF': return '#EC4899';
+      case 'H': case 'HOLIDAY': return '#DB2777';
+      case 'COFF': return '#8B5CF6';
       default: return colors.border;
     }
   };
@@ -98,14 +102,9 @@ const AttendanceSummaryScreen = ({ navigation }) => {
     const shared = item.sharedReports || [];
     const statusColor = getStatusColor(item.status);
     
-    // Safely parse date
-    let dateObj;
-    try {
-      dateObj = new Date(item.date);
-      if (isNaN(dateObj.getTime())) throw new Error("Invalid date");
-    } catch (e) {
-      dateObj = new Date(); // fallback to prevent crash
-    }
+    const dateObj = new Date(item.date);
+    const dayNum = dateObj.getUTCDate();
+    const dayName = format(dateObj, 'EEE', { timeZone: 'UTC' }).toUpperCase();
     
     const isToday = isSameDay(dateObj, new Date());
     const hasReport = !!(myAtt?.todayWork || shared.length > 0);
@@ -122,7 +121,7 @@ const AttendanceSummaryScreen = ({ navigation }) => {
 
     return (
       <TouchableOpacity 
-        activeOpacity={0.8} 
+        activeOpacity={0.9} 
         onPress={() => setSelectedDay(item)}
         style={styles.gridCardContainer}
       >
@@ -131,8 +130,8 @@ const AttendanceSummaryScreen = ({ navigation }) => {
           
           <View style={styles.gridCardHeader}>
             <View style={styles.gridDateBox}>
-              <Text style={styles.gridDateNum}>{format(dateObj, 'dd')}</Text>
-              <Text style={styles.gridDateDay}>{format(dateObj, 'EEE').toUpperCase()}</Text>
+              <Text style={[styles.gridDateNum, isToday && {color: colors.primary}]}>{dayNum}</Text>
+              <Text style={styles.gridDateDay}>{dayName}</Text>
             </View>
             <View style={styles.gridStatusBox}>
                <StatusBadge status={item.status} size="small" />
@@ -140,17 +139,26 @@ const AttendanceSummaryScreen = ({ navigation }) => {
           </View>
           
           <View style={styles.gridCardBody}>
+            {item.holiday && (
+              <Text style={styles.holidayName} numberOfLines={1}>
+                {item.holiday.name}
+              </Text>
+            )}
             <View style={styles.gridTimeRow}>
               <Text style={styles.gridTimeLabel}>IN</Text>
-              <Text style={styles.gridTimeVal}>{myAtt?.inTime ? formatTime(myAtt.inTime) : '—'}</Text>
+              <Text style={[styles.gridTimeVal, myAtt?.inTime && {color: colors.text, fontWeight: '800'}]}>
+                {myAtt?.inTime ? formatTime(myAtt.inTime) : '—'}
+              </Text>
             </View>
             <View style={styles.gridTimeRow}>
               <Text style={styles.gridTimeLabel}>OUT</Text>
-              <Text style={styles.gridTimeVal}>{myAtt?.outTime ? formatTime(myAtt.outTime) : '—'}</Text>
+              <Text style={[styles.gridTimeVal, myAtt?.outTime && {color: colors.text, fontWeight: '800'}]}>
+                {myAtt?.outTime ? formatTime(myAtt.outTime) : '—'}
+              </Text>
             </View>
             <View style={styles.gridTimeRow}>
               <Text style={styles.gridTimeLabel}>HRS</Text>
-              <Text style={[styles.gridTimeVal, { color: colors.primary, fontWeight: '800' }]}>
+              <Text style={[styles.gridTimeVal, { color: statusColor, fontWeight: '900', fontSize: 12 }]}>
                 {myAtt?.totalHours ? `${myAtt.totalHours.toFixed(1)}h` : '—'}
               </Text>
             </View>
@@ -159,21 +167,40 @@ const AttendanceSummaryScreen = ({ navigation }) => {
           <View style={styles.gridCardFooter}>
             {myAtt?.correctionRequested ? (
               <View style={styles.gridFooterBadge}>
+                <Ionicons name="time-outline" size={10} color="#A16207" style={{marginRight: 4}} />
                 <Text style={styles.gridFooterTextWarn}>Pending</Text>
               </View>
             ) : canCorrect ? (
               <TouchableOpacity 
-                style={styles.gridCorrectBtn}
+                activeOpacity={0.8}
                 onPress={() => navigation.navigate('CorrectionRequest', { record: myAtt })}
+                style={styles.gridActionBtnContainer}
               >
-                <Text style={styles.gridCorrectBtnText}>Correct</Text>
+                <LinearGradient
+                  colors={colors.gradients.primary}
+                  start={{x: 0, y: 0}}
+                  end={{x: 1, y: 0}}
+                  style={styles.gridActionBtn}
+                >
+                  <Ionicons name="create-outline" size={12} color="#fff" style={{marginRight: 4}} />
+                  <Text style={styles.gridCorrectBtnText}>Correct</Text>
+                </LinearGradient>
               </TouchableOpacity>
             ) : hasReport ? (
-              <TouchableOpacity style={styles.gridReportBtn} onPress={() => setSelectedDay(item)}>
-                <Text style={styles.gridReportText}>Report</Text>
+              <TouchableOpacity 
+                activeOpacity={0.8}
+                onPress={() => setSelectedDay(item)}
+                style={styles.gridActionBtnContainer}
+              >
+                <View style={[styles.gridActionBtn, { backgroundColor: colors.primary + '10', borderRadius: 10, borderWidth: 1, borderColor: colors.primary + '20' }]}>
+                  <Ionicons name="document-text-outline" size={12} color={colors.primary} style={{marginRight: 4}} />
+                  <Text style={styles.gridReportText}>Report</Text>
+                </View>
               </TouchableOpacity>
             ) : (
-               <View style={{height: 24}} /> // Placeholder for empty footer space
+               <View style={styles.emptyFooter}>
+                 <Ionicons name="ellipse" size={4} color={colors.border} />
+               </View>
             )}
           </View>
         </View>
@@ -190,19 +217,21 @@ const AttendanceSummaryScreen = ({ navigation }) => {
     <View style={styles.header}>
       <View style={styles.monthSelector}>
         <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.monthNavBtn}>
-          <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
+          <Ionicons name="chevron-back" size={20} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.monthTitle}>{format(currentDate, 'MMMM yyyy')}</Text>
+        <View style={styles.monthTitleBox}>
+          <Text style={styles.monthTitle}>{format(currentDate, 'MMMM yyyy')}</Text>
+        </View>
         <TouchableOpacity onPress={() => changeMonth(1)} style={styles.monthNavBtn}>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.statsRow}>
-        <StatCard icon="checkmark-done" label="Present" value={data?.summary?.present || 0} color="#10B981" loading={loading} />
+        <StatCard icon="checkmark-circle" label="Present" value={data?.summary?.present || 0} color="#10B981" loading={loading} />
         <StatCard icon="close-circle" label="Absent" value={data?.summary?.absent || 0} color="#EF4444" loading={loading} />
-        <StatCard icon="time" label="Late" value={data?.summary?.late || 0} color="#F59E0B" loading={loading} />
-        <StatCard icon="speedometer" label="Avg Hrs" value={`${avgHours}h`} color="#8B5CF6" loading={loading} />
+        <StatCard icon="alert-circle" label="Late" value={data?.summary?.late || 0} color="#F59E0B" loading={loading} />
+        <StatCard icon="trending-up" label="Avg Hrs" value={`${avgHours}h`} color="#8B5CF6" loading={loading} />
       </View>
     </View>
   );
@@ -212,7 +241,9 @@ const AttendanceSummaryScreen = ({ navigation }) => {
     return (
       <View style={styles.reportSection}>
         <View style={styles.reportSectionHeader}>
-          <Ionicons name={icon} size={16} color={color} />
+          <View style={[styles.reportIconCircle, {backgroundColor: color + '15'}]}>
+            <Ionicons name={icon} size={14} color={color} />
+          </View>
           <Text style={[styles.reportSectionTitle, { color }]}>{title}</Text>
         </View>
         <View style={styles.reportContentBox}>
@@ -226,13 +257,7 @@ const AttendanceSummaryScreen = ({ navigation }) => {
     if (!selectedDay) return null;
     const myAtt = selectedDay.myAttendance;
     const shared = selectedDay.sharedReports || [];
-    let dateObj;
-    try {
-      dateObj = new Date(selectedDay.date);
-      if (isNaN(dateObj.getTime())) throw new Error();
-    } catch (e) {
-      dateObj = new Date();
-    }
+    const dateObj = new Date(selectedDay.date);
 
     return (
       <Modal 
@@ -253,7 +278,12 @@ const AttendanceSummaryScreen = ({ navigation }) => {
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>{format(dateObj, 'EEEE, dd MMMM')}</Text>
-                <Text style={styles.modalSubTitle}>Daily Attendance Report</Text>
+                <View style={styles.modalSubRow}>
+                  <StatusBadge status={selectedDay.status} size="small" />
+                  {selectedDay.holiday && (
+                    <Text style={styles.modalHolidayTag}>• {selectedDay.holiday.name}</Text>
+                  )}
+                </View>
               </View>
               <TouchableOpacity onPress={() => setSelectedDay(null)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={24} color={colors.textSecondary} />
@@ -265,27 +295,32 @@ const AttendanceSummaryScreen = ({ navigation }) => {
                 <View style={styles.modalGroup}>
                   <View style={styles.modalGroupHeader}>
                     <Text style={styles.modalGroupTitle}>MY REPORT</Text>
-                    <View style={styles.modalGroupBadge}>
+                    <LinearGradient
+                      colors={colors.gradients.primary}
+                      start={{x: 0, y: 0}}
+                      end={{x: 1, y: 0}}
+                      style={styles.modalGroupBadge}
+                    >
                       <Text style={styles.modalGroupBadgeText}>{myAtt.totalHours?.toFixed(1)}h logged</Text>
-                    </View>
+                    </LinearGradient>
                   </View>
                   
                   <ReportSection 
                     title="TODAY'S WORK" 
                     content={myAtt.todayWork} 
-                    icon="briefcase-outline" 
+                    icon="briefcase" 
                     color={colors.primary} 
                   />
                   <ReportSection 
                     title="PENDING TASKS" 
                     content={myAtt.pendingWork} 
-                    icon="list-outline" 
+                    icon="list" 
                     color="#F59E0B" 
                   />
                   <ReportSection 
                     title="ISSUES FACED" 
                     content={myAtt.issuesFaced} 
-                    icon="alert-circle-outline" 
+                    icon="alert-circle" 
                     color="#EF4444" 
                   />
                 </View>
@@ -297,7 +332,7 @@ const AttendanceSummaryScreen = ({ navigation }) => {
                   {shared.map((report, idx) => (
                     <View key={idx} style={styles.teamCard}>
                       <View style={styles.teamCardHeader}>
-                        <Avatar name={report.employeeId?.name} url={report.employeeId?.profileImageUrl} size={40} />
+                        <Avatar name={report.employeeId?.name} url={report.employeeId?.profileImageUrl} size={36} />
                         <View style={styles.teamUserInfo}>
                           <Text style={styles.teamName}>{report.employeeId?.name}</Text>
                           <Text style={styles.teamMeta}>{report.employeeId?.employeeCode} • {report.totalHours?.toFixed(1)}h</Text>
@@ -307,7 +342,7 @@ const AttendanceSummaryScreen = ({ navigation }) => {
                         <Text style={styles.teamReportText}>{report.todayWork}</Text>
                         {report.pendingWork && (
                            <View style={styles.teamSubSection}>
-                              <Text style={styles.teamSubLabel}>Pending: </Text>
+                              <Ionicons name="arrow-redo-outline" size={14} color="#F59E0B" style={{marginRight: 6}} />
                               <Text style={styles.teamSubText}>{report.pendingWork}</Text>
                            </View>
                         )}
@@ -361,41 +396,50 @@ const styles = StyleSheet.create({
   centerBox: { paddingVertical: 60, alignItems: 'center' },
   listContent: { paddingBottom: 40 },
   rowWrapper: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 16,
   },
 
-  // Header Styles (White & Single Line Stats)
+  // Header Styles
   header: { 
     backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
-    paddingBottom: 15,
+    paddingTop: 10,
+    paddingBottom: 20,
     paddingHorizontal: 16,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    elevation: 3,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    marginBottom: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    marginBottom: 20,
   },
   monthSelector: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'space-between',
-    marginBottom: 16
+    marginBottom: 20,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 8,
   },
+  monthTitleBox: { flexDirection: 'row', alignItems: 'center' },
   monthNavBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F1F5F9',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#fff',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
-  monthTitle: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: 0.5 },
+  monthTitle: { fontSize: 17, fontWeight: '900', color: colors.text, letterSpacing: -0.2 },
 
   statsRow: { 
     flexDirection: 'row', 
@@ -407,111 +451,115 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statIconBox: { 
-    width: 28, 
-    height: 28, 
-    borderRadius: 14, 
+    width: 36, 
+    height: 36, 
+    borderRadius: 12, 
     justifyContent: 'center', 
     alignItems: 'center',
-    marginBottom: 4
+    marginBottom: 8
   },
   statInfo: { alignItems: 'center' },
-  statValue: { fontSize: 14, fontWeight: '900' },
-  statLabel: { fontSize: 9, fontWeight: '700', color: colors.textTertiary, textTransform: 'uppercase' },
+  statValue: { fontSize: 16, fontWeight: '900', letterSpacing: -0.5 },
+  statLabel: { fontSize: 9, fontWeight: '800', color: colors.textTertiary, textTransform: 'uppercase', marginTop: 1 },
 
-  // Grid Card Styles (2 columns)
+  // Grid Card Styles
   gridCardContainer: { 
-    width: (width - 36) / 2, // 12px padding on each side (24) + 12px gap between (12) = 36. 
+    width: (width - 48) / 2,
   },
   gridCard: { 
     backgroundColor: '#fff', 
-    borderRadius: 16, 
+    borderRadius: 20, 
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: 'rgba(0,0,0,0.03)',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
   },
   todayGridCard: { 
-    borderColor: colors.primary + '50', 
-    borderWidth: 1.5 
+    borderColor: colors.primary, 
+    borderWidth: 1.5,
+    backgroundColor: '#FBFCFF'
   },
-  gridCardAccent: { width: '100%', height: 4 },
+  gridCardAccent: { width: 4, height: '100%', position: 'absolute', left: 0, top: 0 },
   
   gridCardHeader: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'flex-start',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F8FAFC'
+    paddingTop: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
   },
-  gridDateBox: { alignItems: 'flex-start' },
-  gridDateNum: { fontSize: 20, fontWeight: '900', color: colors.text, lineHeight: 22 },
-  gridDateDay: { fontSize: 10, fontWeight: '700', color: colors.textTertiary, marginTop: 1 },
+  gridDateBox: { alignItems: 'flex-start', marginLeft: 6 },
+  gridDateNum: { fontSize: 22, fontWeight: '900', color: colors.text, lineHeight: 24 },
+  gridDateDay: { fontSize: 10, fontWeight: '800', color: colors.textTertiary, marginTop: 1 },
   gridStatusBox: { alignItems: 'flex-end' },
 
-  gridCardBody: { padding: 12 },
+  gridCardBody: { paddingHorizontal: 12, paddingBottom: 10, marginLeft: 6 },
+  holidayName: { fontSize: 9, fontWeight: '800', color: '#DB2777', marginBottom: 6, textTransform: 'uppercase' },
   gridTimeRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center',
-    marginBottom: 6
+    marginBottom: 5
   },
-  gridTimeLabel: { fontSize: 9, fontWeight: '800', color: colors.textTertiary, width: 30 },
-  gridTimeVal: { fontSize: 11, fontWeight: '700', color: colors.textSecondary },
+  gridTimeLabel: { fontSize: 9, fontWeight: '900', color: colors.textTertiary, width: 28 },
+  gridTimeVal: { fontSize: 11, fontWeight: '700', color: colors.textTertiary },
 
   gridCardFooter: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingBottom: 12,
+    alignItems: 'center',
+  },
+  gridActionBtnContainer: {
+    width: '100%',
+    borderRadius: 10,
+    overflow: 'hidden'
+  },
+  gridActionBtn: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center'
   },
-  gridCorrectBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    width: '100%',
-    alignItems: 'center'
-  },
   gridCorrectBtnText: { fontSize: 11, fontWeight: '800', color: '#fff' },
-  
-  gridReportBtn: {
-    backgroundColor: '#F1F5F9',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    width: '100%',
-    alignItems: 'center'
-  },
-  gridReportText: { fontSize: 11, fontWeight: '800', color: colors.textSecondary },
+  gridReportText: { fontSize: 11, fontWeight: '800', color: colors.primary },
   
   gridFooterBadge: {
-    backgroundColor: '#FEF3C7',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    backgroundColor: '#FEFCE8',
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 10,
     width: '100%',
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#FDE68A'
+    borderColor: '#FEF08A'
   },
-  gridFooterTextWarn: { fontSize: 11, fontWeight: '800', color: '#D97706' },
+  gridFooterTextWarn: { fontSize: 9, fontWeight: '900', color: '#A16207', textTransform: 'uppercase' },
+  emptyFooter: { height: 32, justifyContent: 'center' },
 
   // Modal Styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.4)', justifyContent: 'flex-end' },
   modalDismiss: { ...StyleSheet.absoluteFillObject },
   modalContent: { 
     backgroundColor: '#fff', 
-    borderTopLeftRadius: 32, 
-    borderTopRightRadius: 32, 
-    height: '85%', 
+    borderTopLeftRadius: 36, 
+    borderTopRightRadius: 36, 
+    height: '88%', 
     paddingTop: 12,
     paddingHorizontal: 24
   },
   modalIndicator: { 
-    width: 40, 
-    height: 4, 
-    backgroundColor: '#E2E8F0', 
-    borderRadius: 2, 
+    width: 36, 
+    height: 5, 
+    backgroundColor: '#E5E7EB', 
+    borderRadius: 3, 
     alignSelf: 'center', 
     marginBottom: 20 
   },
@@ -521,65 +569,63 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start', 
     marginBottom: 24 
   },
-  modalTitle: { fontSize: 24, fontWeight: '900', color: colors.text },
-  modalSubTitle: { fontSize: 14, fontWeight: '600', color: colors.textTertiary, marginTop: 4 },
+  modalTitle: { fontSize: 22, fontWeight: '900', color: colors.text, letterSpacing: -0.5 },
+  modalSubRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  modalHolidayTag: { fontSize: 13, fontWeight: '700', color: '#DB2777', marginLeft: 8 },
   modalCloseBtn: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
-    backgroundColor: '#F1F5F9', 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    backgroundColor: '#F3F4F6', 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
   
-  modalScroll: { paddingBottom: 40 },
+  modalScroll: { paddingBottom: 60 },
   modalGroup: { marginBottom: 30 },
-  modalGroupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  modalGroupTitle: { fontSize: 12, fontWeight: '900', color: colors.textTertiary, letterSpacing: 1 },
-  modalGroupBadge: { backgroundColor: colors.primary + '10', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  modalGroupBadgeText: { fontSize: 11, fontWeight: '800', color: colors.primary },
+  modalGroupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
+  modalGroupTitle: { fontSize: 11, fontWeight: '900', color: colors.textTertiary, letterSpacing: 1.5 },
+  modalGroupBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10 },
+  modalGroupBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
 
   reportSection: { marginBottom: 20 },
-  reportSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  reportSectionTitle: { fontSize: 13, fontWeight: '800' },
-  reportContentBox: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#F1F5F9' },
-  reportContentText: { fontSize: 15, color: colors.textSecondary, lineHeight: 24 },
+  reportSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  reportIconCircle: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+  reportSectionTitle: { fontSize: 13, fontWeight: '900', letterSpacing: 0.2 },
+  reportContentBox: { backgroundColor: '#F9FAFB', borderRadius: 18, padding: 18, borderWidth: 1, borderColor: '#F3F4F6' },
+  reportContentText: { fontSize: 14, color: colors.textSecondary, lineHeight: 22, fontWeight: '500' },
 
   teamCard: { 
     backgroundColor: '#fff', 
-    borderRadius: 20, 
+    borderRadius: 24, 
     marginBottom: 16, 
     borderWidth: 1, 
-    borderColor: '#F1F5F9',
+    borderColor: '#F3F4F6',
+    overflow: 'hidden',
     elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 5,
   },
   teamCardHeader: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    padding: 12, 
-    backgroundColor: '#F8FAFC', 
+    padding: 14, 
+    backgroundColor: '#F9FAFB', 
     borderBottomWidth: 1, 
-    borderBottomColor: '#F1F5F9',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20
+    borderBottomColor: '#F3F4F6',
   },
   teamUserInfo: { marginLeft: 12 },
   teamName: { fontSize: 15, fontWeight: '800', color: colors.text },
-  teamMeta: { fontSize: 12, fontWeight: '600', color: colors.textTertiary, marginTop: 2 },
-  teamCardBody: { padding: 16 },
+  teamMeta: { fontSize: 11, fontWeight: '700', color: colors.textTertiary, marginTop: 1 },
+  teamCardBody: { padding: 18 },
   teamReportText: { fontSize: 14, color: colors.textSecondary, lineHeight: 22 },
-  teamSubSection: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap' },
-  teamSubLabel: { fontSize: 13, fontWeight: '800', color: '#F59E0B' },
-  teamSubText: { fontSize: 13, color: colors.textSecondary },
+  teamSubSection: { marginTop: 14, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', padding: 10, borderRadius: 12 },
+  teamSubText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600', flex: 1 },
 
-  emptyModalState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  emptyModalText: { fontSize: 15, color: colors.textTertiary, marginTop: 16, textAlign: 'center', fontWeight: '600' }
+  emptyModalState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
+  emptyModalText: { fontSize: 15, color: colors.textTertiary, marginTop: 16, textAlign: 'center', fontWeight: '700' }
 });
 
 export default AttendanceSummaryScreen;
-
-

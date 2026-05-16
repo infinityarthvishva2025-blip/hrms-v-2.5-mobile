@@ -53,7 +53,7 @@ const PremiumSplashScreen = ({ onFinish }) => {
     // Minimum display time for premium feel
     const timer = setTimeout(() => {
       if (onFinish) onFinish();
-    }, 2500); // 2.5 seconds total
+    }, 2000); // 2.5 seconds total
 
     return () => clearTimeout(timer);
   }, []);

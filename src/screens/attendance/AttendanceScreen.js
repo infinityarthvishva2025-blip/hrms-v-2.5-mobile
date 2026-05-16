@@ -102,43 +102,51 @@ const AttendanceScreen = ({ navigation }) => {
 
   const locationRef = useRef(null);
 
-  const verifyLocation = useCallback(async (office) => {
-    if (!office) return;
+  const verifyLocation = useCallback(async (office, forceHighAccuracy = false) => {
+    if (!office) return 'invalid';
     setGeoStatus('checking');
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setGeoStatus('permission_denied');
-        return;
+        return 'permission_denied';
       }
 
-      let coords = null;
-      try {
-        const last = await Location.getLastKnownPositionAsync();
-        if (last?.coords) {
-          coords = last.coords;
-          setUserLocation(coords);
-          const dist = calculateDistance(coords.latitude, coords.longitude, office.lat, office.lng);
+      // 1. Try quick cached location first (very fast)
+      const last = await Location.getLastKnownPositionAsync({ maxAge: 30000 }); // Use location from last 30s
+      if (last?.coords) {
+        const dist = calculateDistance(last.coords.latitude, last.coords.longitude, office.lat, office.lng);
+        if (dist <= office.radius) {
           setGeoDistance(Math.round(dist));
-          setGeoStatus(dist <= office.radius ? 'valid' : 'invalid');
+          setUserLocation(last.coords);
+          locationRef.current = last.coords;
+          setGeoStatus('valid');
+          // If we found a valid cached location and don't strictly NEED a fresh high-accuracy one, return early
+          if (!forceHighAccuracy) return 'valid';
         }
-      } catch (_) {}
+      }
 
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low })
-        .then(loc => {
-          if (!loc?.coords) return;
-          coords = loc.coords;
-          locationRef.current = coords;
-          setUserLocation(coords);
-          const dist = calculateDistance(coords.latitude, coords.longitude, office.lat, office.lng);
-          setGeoDistance(Math.round(dist));
-          setGeoStatus(dist <= office.radius ? 'valid' : 'invalid');
-        })
-        .catch(() => {
-          if (!coords) setGeoStatus('error');
-        });
+      // 2. Get fresh location with Balanced accuracy (much faster than High)
+      // Balanced uses WiFi/Cell which is usually instant and accurate to ~30m
+      const loc = await Location.getCurrentPositionAsync({ 
+        accuracy: Location.Accuracy.Balanced,
+        timeout: 5000 // 5s timeout to prevent hanging
+      });
+      
+      if (loc?.coords) {
+        locationRef.current = loc.coords;
+        setUserLocation(loc.coords);
+        const dist = calculateDistance(loc.coords.latitude, loc.coords.longitude, office.lat, office.lng);
+        setGeoDistance(Math.round(dist));
+        const finalStatus = dist <= office.radius ? 'valid' : 'invalid';
+        setGeoStatus(finalStatus);
+        return finalStatus;
+      }
+      return 'invalid';
     } catch (error) {
+      console.error('Location error:', error);
       setGeoStatus('error');
+      return 'error';
     }
   }, []);
 
@@ -183,7 +191,8 @@ const AttendanceScreen = ({ navigation }) => {
     }
 
     const inTime = new Date(todayRecord.inTime);
-    const shiftHours = inTime.getDay() === 6 ? 7 : 8.5; // Saturday 7h, Weekdays 8.5h
+    const dayOfWeek = inTime.getDay();
+    const shiftHours = dayOfWeek === 6 ? 7 : 8.5; // Saturday 7h, Weekdays 8.5h
     const shiftMs = shiftHours * 3600000;
 
     const interval = setInterval(() => {
@@ -236,29 +245,32 @@ const AttendanceScreen = ({ navigation }) => {
     return () => clearInterval(intervalId);
   }, [todayRecord]);
 
-  // ── Haptic‑rich action handler ──
-  const handleActionClick = (op) => {
-    // Haptic feedback on button tap
+  // ── Action handler ──
+  const handleActionClick = async (op) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const currentWorkMode = todayRecord?.workMode || workMode; // always use workMode from record
-    // Zone check only for Office mode, bypass allowed for bypass users
-    if (!isBypassUser && currentWorkMode === 'Office' && geoStatus !== 'valid') {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'You must be within office zone' });
-      return;
+    const currentMode = todayRecord?.workMode || workMode;
+    
+    // Improved Geo Validation
+    if (!isBypassUser && currentMode === 'Office') {
+       setActionLoading(true);
+       const result = await verifyLocation(officeSettings, true);
+       setActionLoading(false);
+
+       if (result !== 'valid' && op === 'checkin') {
+          Toast.show({ type: 'error', text1: 'Out of Range', text2: 'Please move closer to office zone' });
+          return;
+       }
     }
 
     if (!user.faceDescriptor || user.faceDescriptor.length === 0) {
-      Toast.show({ type: 'error', text1: 'Face ID Required', text2: 'Please register Face ID in your Profile.' });
+      Toast.show({ type: 'error', text1: 'Face ID Required', text2: 'Please register Face ID in Profile.' });
       return;
     }
 
     if (isBypassUser) {
-      if (op === 'checkin') {
-        proceedCheckIn();
-      } else {
-        setShowReportModal(true);
-      }
+      if (op === 'checkin') proceedCheckIn();
+      else setShowReportModal(true);
       return;
     }
 
@@ -290,11 +302,8 @@ const AttendanceScreen = ({ navigation }) => {
         setShowFaceModal(false);
 
         const op = faceOpRef.current;
-        if (op === 'checkin') {
-          proceedCheckIn();
-        } else if (op === 'checkout') {
-          setShowReportModal(true);
-        }
+        if (op === 'checkin') proceedCheckIn();
+        else if (op === 'checkout') setShowReportModal(true);
       }
     } catch (err) {
       console.error(err);
@@ -304,8 +313,8 @@ const AttendanceScreen = ({ navigation }) => {
   const proceedCheckIn = async () => {
     setActionLoading(true);
     try {
-      const lat = isBypassUser ? BYPASS_LAT : userLocation?.latitude;
-      const lng = isBypassUser ? BYPASS_LNG : userLocation?.longitude;
+      const lat = isBypassUser ? BYPASS_LAT : (locationRef.current?.latitude || userLocation?.latitude);
+      const lng = isBypassUser ? BYPASS_LNG : (locationRef.current?.longitude || userLocation?.longitude);
 
       await checkIn({
         latitude: lat,
@@ -313,12 +322,12 @@ const AttendanceScreen = ({ navigation }) => {
         workMode: workMode
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Toast.show({ type: 'success', text1: 'Success', text2: 'Checked in successfully' });
+      Toast.show({ type: 'success', text1: 'Checked In', text2: `Working from ${workMode}` });
       fetchStatus();
       refreshProfile();
     } catch (error) {
       const msg = error.response?.data?.message || 'Check-in failed';
-      Toast.show({ type: 'error', text1: 'Check-in Failed', text2: msg });
+      Toast.show({ type: 'error', text1: 'Failed', text2: msg });
     } finally {
       setActionLoading(false);
     }
@@ -326,14 +335,14 @@ const AttendanceScreen = ({ navigation }) => {
 
   const proceedCheckOut = async () => {
     if (!reportForm.todayWork.trim()) {
-      Toast.show({ type: 'error', text1: 'Missing Info', text2: "Please describe today's work" });
+      Toast.show({ type: 'error', text1: 'Required', text2: "Please describe today's work" });
       return;
     }
 
     setActionLoading(true);
     try {
-      const lat = isBypassUser ? BYPASS_LAT : userLocation?.latitude;
-      const lng = isBypassUser ? BYPASS_LNG : userLocation?.longitude;
+      const lat = isBypassUser ? BYPASS_LAT : (locationRef.current?.latitude || userLocation?.latitude);
+      const lng = isBypassUser ? BYPASS_LNG : (locationRef.current?.longitude || userLocation?.longitude);
 
       const { data } = await checkOut({
         latitude: lat,
@@ -347,9 +356,9 @@ const AttendanceScreen = ({ navigation }) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       const { overtimeMinutes, shortfallMinutes } = data.data;
-      if (overtimeMinutes > 0) Toast.show({ type: 'success', text1: 'Success', text2: `Checked out! Overtime: ${overtimeMinutes}m` });
-      else if (shortfallMinutes > 0) Toast.show({ type: 'info', text1: 'Early Checkout', text2: `Checked out ${shortfallMinutes}m early` });
-      else Toast.show({ type: 'success', text1: 'Success', text2: 'Checked out successfully' });
+      if (overtimeMinutes > 0) Toast.show({ type: 'success', text1: 'Checked Out', text2: `Overtime: ${overtimeMinutes}m` });
+      else if (shortfallMinutes > 0) Toast.show({ type: 'info', text1: 'Checked Out', text2: `Shortfall: ${shortfallMinutes}m` });
+      else Toast.show({ type: 'success', text1: 'Success', text2: 'Attendance synced' });
 
       setShowReportModal(false);
       setReportForm({ todayWork: '', pendingWork: '', issuesFaced: '', reportParticipants: [] });
@@ -357,7 +366,7 @@ const AttendanceScreen = ({ navigation }) => {
       refreshProfile();
     } catch (error) {
       const msg = error.response?.data?.message || 'Check-out failed';
-      Toast.show({ type: 'error', text1: 'Check-out Failed', text2: msg });
+      Toast.show({ type: 'error', text1: 'Failed', text2: msg });
     } finally {
       setActionLoading(false);
     }
@@ -379,9 +388,9 @@ const AttendanceScreen = ({ navigation }) => {
   const renderGeoStatus = () => {
     if (isBypassUser) {
       return (
-        <View style={[styles.geoPill, { backgroundColor: 'rgba(139, 92, 246, 0.1)', borderColor: 'rgba(139, 92, 246, 0.3)' }]}>
-          <Ionicons name="flash" size={14} color="#8B5CF6" />
-          <Text style={[styles.geoText, { color: '#8B5CF6' }]}>Remote Access</Text>
+        <View style={[styles.geoPill, { backgroundColor: '#EDE9FE', borderColor: '#DDD6FE' }]}>
+          <Ionicons name="flash" size={14} color="#7C3AED" />
+          <Text style={[styles.geoText, { color: '#7C3AED' }]}>Remote Mode</Text>
         </View>
       );
     }
@@ -389,21 +398,21 @@ const AttendanceScreen = ({ navigation }) => {
     if (currentWorkMode !== 'Office') {
       const isTracking = trackingActive && !isCheckedOut;
       return (
-        <View style={[styles.geoPill, { backgroundColor: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.2)' }]}>
-          <Ionicons name={isTracking ? "location" : "home"} size={14} color={colors.success} />
-          <Text style={[styles.geoText, { color: colors.success }]}>
-            {currentWorkMode} {isTracking ? '· Tracking Active' : ''}
+        <View style={[styles.geoPill, { backgroundColor: '#D1FAE5', borderColor: '#A7F3D0' }]}>
+          <Ionicons name={isTracking ? "location" : "home"} size={14} color="#059669" />
+          <Text style={[styles.geoText, { color: '#059669' }]}>
+            {currentWorkMode} {isTracking ? '· GPS Tracking Active' : ''}
           </Text>
         </View>
       );
     }
 
     const map = {
-      checking: { color: '#2076C7', bg: 'rgba(32,118,199,0.12)', border: 'rgba(32,118,199,0.3)', icon: 'sync', text: 'Verifying Location...' },
-      valid: { color: '#059669', bg: 'rgba(5,150,105,0.12)', border: 'rgba(5,150,105,0.3)', icon: 'checkmark-circle', text: `Within Office · ${geoDistance}m` },
-      invalid: { color: colors.error, bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)', icon: 'close-circle', text: `Out of Zone · ${geoDistance}m` },
-      error: { color: colors.error, bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)', icon: 'alert-circle', text: 'Location Error' },
-      permission_denied: { color: colors.error, bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)', icon: 'alert-circle', text: 'Location Blocked' },
+      checking: { color: colors.primary, bg: '#E0F2FE', border: '#BAE6FD', icon: 'sync', text: 'Verifying Location...' },
+      valid: { color: '#059669', bg: '#D1FAE5', border: '#A7F3D0', icon: 'checkmark-circle', text: `In Range · ${geoDistance}m` },
+      invalid: { color: colors.error, bg: '#FEE2E2', border: '#FECACA', icon: 'close-circle', text: `Out of Range · ${geoDistance}m` },
+      error: { color: colors.error, bg: '#FEE2E2', border: '#FECACA', icon: 'alert-circle', text: 'Location Error' },
+      permission_denied: { color: colors.error, bg: '#FEE2E2', border: '#FECACA', icon: 'alert-circle', text: 'Permission Denied' },
     };
     const s = map[geoStatus] || map.checking;
     return (
@@ -416,9 +425,12 @@ const AttendanceScreen = ({ navigation }) => {
 
   const MiniMetric = ({ label, value, icon, color }) => (
     <View style={styles.miniMetric}>
-      <View style={[styles.miniMetricIcon, { backgroundColor: color + '10' }]}>
+      <LinearGradient
+        colors={[color + '20', color + '05']}
+        style={styles.miniMetricIcon}
+      >
         <Ionicons name={icon} size={18} color={color} />
-      </View>
+      </LinearGradient>
       <View>
         <Text style={styles.miniMetricLabel}>{label}</Text>
         <Text style={styles.miniMetricValue}>{value}</Text>
@@ -440,76 +452,62 @@ const AttendanceScreen = ({ navigation }) => {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchStatus} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Geo Status Chip */}
         <View style={styles.statusSection}>
           {renderGeoStatus()}
           {!isBypassUser && currentWorkMode === 'Office' && (
-            <TouchableOpacity onPress={() => verifyLocation(officeSettings)} style={{ padding: 8 }}>
-              <Ionicons name="refresh" size={18} color={colors.textTertiary} />
+            <TouchableOpacity onPress={() => verifyLocation(officeSettings, true)} style={styles.refreshBtn}>
+              <Ionicons name="refresh" size={16} color={colors.primary} />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Premium Hero Action Card */}
         <View style={styles.heroContainer}>
           <LinearGradient
-            colors={['#1E3A8A', '#3B82F6']}  // deeper, more premium gradient
+            colors={colors.gradients.primary}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.heroCard}
           >
-            <View style={[styles.heroBlob, { top: -60, right: -60, width: 220, height: 220, opacity: 0.15 }]} />
-            <View style={[styles.heroBlob, { bottom: -40, left: -40, width: 140, height: 140, opacity: 0.1 }]} />
+            <View style={[styles.heroBlob, { top: -40, right: -40, width: 200, height: 200, opacity: 0.1 }]} />
+            <View style={[styles.heroBlob, { bottom: -30, left: -30, width: 120, height: 120, opacity: 0.05 }]} />
 
             <View style={styles.heroContent}>
               {isCheckedIn && !isCheckedOut ? (
                 <View style={styles.activeSession}>
-                  {/* Timer Section – gradient pill */}
-                  <LinearGradient
-                    colors={isOvertime
-                      ? ['rgba(245,158,11,0.22)', 'rgba(239,68,68,0.18)']
-                      : ['rgba(32,118,199,0.22)', 'rgba(28,173,163,0.22)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.timerGradientCard}
-                  >
-                    <Text style={[styles.timerLabel, isOvertime && { color: '#FCD34D' }]}>
-                      {isOvertime ? '🔥 OVERTIME RUNNING' : '⏱ TIME REMAINING'}
-                    </Text>
-                    <Text
-                      style={[styles.timerText, isOvertime && { color: '#FCD34D' }]}
-                      adjustsFontSizeToFit
-                      numberOfLines={1}
-                    >
-                      {isOvertime && '+'}{timerDisplay}
-                    </Text>
+                  <Text style={[styles.timerLabel, isOvertime && { color: '#FDE047' }]}>
+                    {isOvertime ? 'OVERTIME ACTIVE' : 'WORKING HOURS'}
+                  </Text>
+                  <Text style={[styles.timerText, isOvertime && { color: '#FDE047' }]}>
+                    {isOvertime && '+'}{timerDisplay}
+                  </Text>
+                  <View style={styles.progressContainer}>
                     <View style={styles.progressTrack}>
                       <View style={[
                         styles.progressFill,
                         { width: `${progressPct}%` },
-                        isOvertime && { backgroundColor: '#FCD34D' }
+                        isOvertime && { backgroundColor: '#FDE047' }
                       ]} />
                     </View>
-                    <Text style={[styles.shiftTarget, { marginTop: 8 }]}>
-                      SHIFT GOAL · {new Date().getDay() === 6 ? '7.0 hrs' : '8.5 hrs'}
+                    <Text style={styles.shiftTarget}>
+                      Target: {new Date().getDay() === 6 ? '7.0h' : '8.5h'}
                     </Text>
-                  </LinearGradient>
+                  </View>
                 </View>
               ) : isCheckedOut ? (
                 <View style={styles.doneSession}>
                   <View style={styles.doneIconBg}>
-                    <Ionicons name="checkmark-done-circle" size={54} color="#fff" />
+                    <Ionicons name="checkmark-done" size={48} color="#fff" />
                   </View>
-                  <Text style={styles.doneTitle}>All Set for Today!</Text>
-                  <Text style={styles.doneSub}>Your attendance is locked and synced.</Text>
+                  <Text style={styles.doneTitle}>Duty Completed</Text>
+                  <Text style={styles.doneSub}>Your records are synced for today.</Text>
                 </View>
               ) : (
                 <View style={styles.idleSession}>
                   <View style={styles.idleIconBg}>
-                    <Ionicons name="finger-print-outline" size={42} color="rgba(255,255,255,0.4)" />
+                    <Ionicons name="finger-print" size={42} color="rgba(255,255,255,0.4)" />
                   </View>
-                  <Text style={styles.idleTitle}>Ready to Begin?</Text>
-                  <Text style={styles.idleSub}>Select work mode and check in securely.</Text>
+                  <Text style={styles.idleTitle}>Check In</Text>
+                  <Text style={styles.idleSub}>Select your mode to start the shift.</Text>
                 </View>
               )}
 
@@ -522,7 +520,6 @@ const AttendanceScreen = ({ navigation }) => {
                           key={mode}
                           style={[styles.workModeBtn, workMode === mode && styles.workModeBtnActive]}
                           onPress={() => setWorkMode(mode)}
-                          activeOpacity={0.7}
                         >
                           <Text style={[styles.workModeText, workMode === mode && styles.workModeTextActive]}>
                             {mode}
@@ -534,16 +531,15 @@ const AttendanceScreen = ({ navigation }) => {
                       style={[styles.actionBtn, !canAct && styles.actionBtnDisabled]}
                       onPress={() => handleActionClick('checkin')}
                       disabled={!canAct}
-                      activeOpacity={0.8}
                     >
                       <LinearGradient
-                        colors={canAct ? ['#fff', 'rgba(255,255,255,0.9)'] : ['rgba(255,255,255,0.4)', 'rgba(255,255,255,0.3)']}
+                        colors={['#fff', '#F1F5F9']}
                         style={styles.actionBtnGradient}
                       >
                         {actionLoading ? <ActivityIndicator color={colors.primary} /> : (
                           <>
-                            <Ionicons name="flash" size={20} color={canAct ? colors.primary : '#fff'} />
-                            <Text style={[styles.actionBtnText, { color: canAct ? colors.primary : '#fff' }]}>GEO CHECK IN</Text>
+                            <Ionicons name="flash" size={18} color={colors.primary} />
+                            <Text style={[styles.actionBtnText, { color: colors.primary }]}>START SHIFT</Text>
                           </>
                         )}
                       </LinearGradient>
@@ -551,27 +547,25 @@ const AttendanceScreen = ({ navigation }) => {
                   </>
                 ) : !isCheckedOut ? (
                   <TouchableOpacity
-                    style={[styles.actionBtn, !canAct && styles.actionBtnDisabled]}
+                    style={[styles.actionBtn]}
                     onPress={() => handleActionClick('checkout')}
-                    disabled={!canAct}
-                    activeOpacity={0.8}
                   >
                     <LinearGradient
-                      colors={canAct ? ['#EF4444', '#DC2626'] : ['#94a3b8', '#64748b']}
+                      colors={['#EF4444', '#B91C1C']}
                       style={styles.actionBtnGradient}
                     >
                       {actionLoading ? <ActivityIndicator color="#fff" /> : (
                         <>
-                          <Ionicons name="log-out" size={20} color="#fff" />
-                          <Text style={[styles.actionBtnText, { color: '#fff' }]}>GEO CHECK OUT</Text>
+                          <Ionicons name="log-out" size={18} color="#fff" />
+                          <Text style={[styles.actionBtnText, { color: '#fff' }]}>END SHIFT</Text>
                         </>
                       )}
                     </LinearGradient>
                   </TouchableOpacity>
                 ) : (
                   <View style={styles.completedBadge}>
-                    <Ionicons name="shield-checkmark" size={16} color="rgba(255,255,255,0.6)" />
-                    <Text style={styles.completedBadgeText}>WORK LOGGED SECURELY</Text>
+                    <Ionicons name="shield-checkmark" size={14} color="rgba(255,255,255,0.7)" />
+                    <Text style={styles.completedBadgeText}>SECURE LOGS ACTIVE</Text>
                   </View>
                 )}
               </View>
@@ -579,215 +573,144 @@ const AttendanceScreen = ({ navigation }) => {
           </LinearGradient>
         </View>
 
-        {/* Disclaimer */}
         <View style={styles.disclaimerContainer}>
+          <Ionicons name="information-circle" size={14} color="#B45309" style={{marginRight: 6}} />
           <Text style={styles.disclaimerText}>
-            ⚠️ Disclaimer: Your live location is being captured for attendance purposes.
-            Please do not use camera photos or fake location methods.
+            Real-time GPS capture is active. Ensure you are within range.
           </Text>
         </View>
 
-        {/* Premium Metrics Grid */}
-        <Text style={styles.sectionTitle}>Shift Metrics</Text>
+        <Text style={styles.sectionTitle}>Duty Overview</Text>
         <View style={styles.metricsGrid}>
           <AppCard style={styles.metricItem}>
             <MiniMetric
-              label="Clock In"
+              label="Check In"
               value={todayRecord?.inTime ? format(new Date(todayRecord.inTime), 'hh:mm a') : '--:--'}
-              icon="enter-outline"
-              color={colors.success}
+              icon="time"
+              color="#10B981"
             />
           </AppCard>
           <AppCard style={styles.metricItem}>
             <MiniMetric
-              label="Clock Out"
+              label="Check Out"
               value={todayRecord?.outTime ? format(new Date(todayRecord.outTime), 'hh:mm a') : '--:--'}
-              icon="exit-outline"
+              icon="log-out"
               color={colors.primary}
             />
           </AppCard>
           <AppCard style={styles.metricItem}>
             <MiniMetric
-              label="Worked"
+              label="Total Hrs"
               value={todayRecord?.totalHours ? todayRecord.totalHours.toFixed(1) + 'h' : '0.0h'}
-              icon="time-outline"
-              color={colors.warning}
+              icon="hourglass"
+              color="#F59E0B"
             />
           </AppCard>
           <AppCard style={styles.metricItem}>
             <MiniMetric
-              label="Status"
-              value={isCheckedIn ? (isCheckedOut ? 'DONE' : 'ON-GOING') : 'ABSENT'}
-              icon="analytics-outline"
-              color={colors.gradients.secondary[0]}
+              label="Shift"
+              value={isCheckedIn ? (isCheckedOut ? 'DONE' : 'ACTIVE') : 'PENDING'}
+              icon="calendar"
+              color="#8B5CF6"
             />
           </AppCard>
         </View>
 
         {todayRecord?.isLate && (
-          <AppCard style={styles.lateNotice}>
+          <View style={styles.lateNotice}>
             <View style={styles.lateIconBg}>
-              <Ionicons name="alert-circle" size={20} color={colors.warning} />
+              <Ionicons name="alert-circle" size={20} color="#F59E0B" />
             </View>
             <View>
-              <Text style={styles.lateTitle}>Late Entry Detected</Text>
-              <Text style={styles.lateSub}>You were late by {todayRecord.lateMinutes} minutes today.</Text>
+              <Text style={styles.lateTitle}>Late Check-In Detected</Text>
+              <Text style={styles.lateSub}>Delayed by {todayRecord.lateMinutes} minutes.</Text>
             </View>
-          </AppCard>
+          </View>
         )}
 
-        <View style={{ height: 60 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Face Verification Modal (WebView) */}
       <Modal
         isVisible={showFaceModal}
         style={{ margin: 0 }}
-        animationIn="fadeIn"
-        animationOut="fadeOut"
-        animationInTiming={250}
-        animationOutTiming={200}
         backdropOpacity={1}
-        backdropColor="#080C14"
-        useNativeDriver
+        backdropColor="#0F172A"
       >
-        <View style={{ flex: 1, backgroundColor: '#080C14', paddingTop: Platform.OS === 'ios' ? 44 : 0 }}>
+        <View style={{ flex: 1, backgroundColor: '#0F172A', paddingTop: Platform.OS === 'ios' ? 50 : 0 }}>
           {showFaceModal && !!htmlContent && (
             <WebView
               ref={webviewRef}
               source={{ html: htmlContent, baseUrl: 'https://localhost' }}
               originWhitelist={['*']}
-              allowFileAccessFromFileURLs={true}
-              allowUniversalAccessFromFileURLs={true}
-              mixedContentMode="always"
-              style={{ flex: 1, backgroundColor: '#080C14' }}
+              style={{ flex: 1 }}
               onMessage={handleWebViewMessage}
               mediaPlaybackRequiresUserAction={false}
               allowsInlineMediaPlayback={true}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              cacheEnabled={true}
-              onPermissionRequest={(request) => {
-                request.grant(request.resources);
-              }}
+              onPermissionRequest={(request) => request.grant(request.resources)}
             />
           )}
         </View>
       </Modal>
 
-      {/* Checkout Report Modal – Premium Bottom Sheet */}
       <Modal
         isVisible={showReportModal}
         style={styles.modal}
         onBackdropPress={() => !actionLoading && setShowReportModal(false)}
-        animationIn="slideInUp"
-        animationOut="slideOutDown"
-        animationInTiming={350}
-        animationOutTiming={300}
-        backdropTransitionInTiming={200}
-        backdropTransitionOutTiming={200}
         propagateSwipe
         swipeDirection="down"
         onSwipeComplete={() => !actionLoading && setShowReportModal(false)}
         avoidKeyboard={true}
-        useNativeDriver={true}
-        hideModalContentWhileAnimating={true}
       >
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={{ flex: 1, justifyContent: 'flex-end' }}
         >
           <View style={styles.modalContent}>
-            {/* Drag handle */}
             <View style={styles.modalHandle} />
-
-            {/* Header */}
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalTitle}>End of Day Report</Text>
-                <Text style={styles.modalSubtitle}>Required before check-out</Text>
+                <Text style={styles.modalTitle}>Daily Report</Text>
+                <Text style={styles.modalSubtitle}>Sync your progress before signing off</Text>
               </View>
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={() => !actionLoading && setShowReportModal(false)}
-              >
+              <TouchableOpacity onPress={() => !actionLoading && setShowReportModal(false)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
-              showsVerticalScrollIndicator={false} 
-              keyboardShouldPersistTaps="handled"
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 20 }}
-            >
-              {/* Today's Work */}
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <View style={styles.reportFieldBlock}>
                 <View style={styles.reportLabelRow}>
-                  <View style={[styles.reportLabelIcon, { backgroundColor: colors.success + '15' }]}>
-                    <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
-                  </View>
-                  <Text style={styles.reportLabel}>Today's Completed Work <Text style={{ color: colors.error }}>*</Text></Text>
+                  <Ionicons name="briefcase-outline" size={16} color={colors.primary} />
+                  <Text style={styles.reportLabel}>Work Completed <Text style={{color: '#EF4444'}}>*</Text></Text>
                 </View>
                 <TextInput
-                  style={[styles.reportInput, { height: 90 }]}
-                  placeholder="Describe what you accomplished today…"
-                  placeholderTextColor={colors.textTertiary}
+                  style={[styles.reportInput, { height: 100 }]}
+                  placeholder="What did you achieve today?"
                   multiline
-                  numberOfLines={3}
-                  textAlignVertical="top"
                   value={reportForm.todayWork}
                   onChangeText={t => setReportForm({ ...reportForm, todayWork: t })}
                 />
               </View>
 
-              {/* Pending Work */}
               <View style={styles.reportFieldBlock}>
                 <View style={styles.reportLabelRow}>
-                  <View style={[styles.reportLabelIcon, { backgroundColor: colors.warning + '15' }]}>
-                    <Ionicons name="time-outline" size={16} color={colors.warning} />
-                  </View>
-                  <Text style={styles.reportLabel}>Pending / Carry-over Tasks</Text>
+                  <Ionicons name="list-outline" size={16} color="#F59E0B" />
+                  <Text style={styles.reportLabel}>Pending Tasks</Text>
                 </View>
                 <TextInput
-                  style={[styles.reportInput, { height: 70 }]}
-                  placeholder="Tasks carrying over to tomorrow…"
-                  placeholderTextColor={colors.textTertiary}
+                  style={[styles.reportInput, { height: 80 }]}
+                  placeholder="Tasks for tomorrow..."
                   multiline
-                  numberOfLines={2}
-                  textAlignVertical="top"
                   value={reportForm.pendingWork}
                   onChangeText={t => setReportForm({ ...reportForm, pendingWork: t })}
                 />
               </View>
 
-              {/* Issues */}
               <View style={styles.reportFieldBlock}>
                 <View style={styles.reportLabelRow}>
-                  <View style={[styles.reportLabelIcon, { backgroundColor: colors.error + '12' }]}>
-                    <Ionicons name="alert-circle-outline" size={16} color={colors.error} />
-                  </View>
-                  <Text style={styles.reportLabel}>Issues / Blockers</Text>
-                </View>
-                <TextInput
-                  style={[styles.reportInput, { height: 70 }]}
-                  placeholder="Any blockers or challenges faced?"
-                  placeholderTextColor={colors.textTertiary}
-                  multiline
-                  numberOfLines={2}
-                  textAlignVertical="top"
-                  value={reportForm.issuesFaced}
-                  onChangeText={t => setReportForm({ ...reportForm, issuesFaced: t })}
-                />
-              </View>
-
-              {/* Share with */}
-              <View style={styles.reportFieldBlock}>
-                <View style={styles.reportLabelRow}>
-                  <View style={[styles.reportLabelIcon, { backgroundColor: colors.info + '12' }]}>
-                    <Ionicons name="people-outline" size={16} color={colors.info} />
-                  </View>
-                  <Text style={styles.reportLabel}>Share Report With</Text>
+                  <Ionicons name="people-outline" size={16} color="#6366F1" />
+                  <Text style={styles.reportLabel}>Share with Team</Text>
                 </View>
                 <View style={styles.participantsContainer}>
                   {managementEmps.map(emp => {
@@ -797,41 +720,29 @@ const AttendanceScreen = ({ navigation }) => {
                         key={emp._id}
                         onPress={() => toggleParticipant(emp._id)}
                         style={[styles.participantPill, selected && styles.selectedPill]}
-                        activeOpacity={0.75}
                       >
-                        {selected && <Ionicons name="checkmark" size={12} color="#fff" style={{ marginRight: 4 }} />}
                         <Text style={[styles.participantText, selected && { color: '#fff' }]}>{emp.name}</Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
               </View>
-
               <View style={{ height: 100 }} />
             </ScrollView>
 
-            {/* Sticky Submit Footer */}
             <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={[styles.submitBtn, actionLoading && styles.disabledBtn]}
+                style={styles.submitBtn}
                 onPress={proceedCheckOut}
                 disabled={actionLoading}
-                activeOpacity={0.85}
               >
                 <LinearGradient
-                  colors={['#EF4444', '#DC2626']}
+                  colors={colors.gradients.primary}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={styles.submitBtnGradient}
                 >
-                  {actionLoading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons name="log-out" size={20} color="#fff" />
-                      <Text style={styles.submitBtnText}>Submit & Check Out</Text>
-                    </>
-                  )}
+                  {actionLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>Submit & Sign Out</Text>}
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -843,227 +754,88 @@ const AttendanceScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  scrollContainer: { padding: 20, paddingTop: 16 },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  scrollContainer: { padding: 20 },
+  statusSection: { marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  geoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  geoText: { fontSize: 11, fontWeight: '800' },
+  refreshBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E0F2FE', justifyContent: 'center', alignItems: 'center' },
 
-  statusSection: { marginBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  geoPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  geoText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.2 },
+  heroContainer: { marginBottom: 24 },
+  heroCard: { minHeight: 320, borderRadius: 32, padding: 24, overflow: 'hidden', elevation: 12, shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16 },
+  heroBlob: { position: 'absolute', borderRadius: 100, backgroundColor: '#fff' },
+  heroContent: { flex: 1, justifyContent: 'space-between' },
 
-  heroContainer: { marginBottom: 28 },
-  heroCard: {
-    minHeight: 340,
-    borderRadius: 36,
-    padding: 28,
-    overflow: 'hidden',
-    elevation: 14,
-    shadowColor: '#1E3A8A',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    backgroundColor: 'transparent', // gradient handles background
-  },
-  heroBlob: {
-    position: 'absolute',
-    borderRadius: 110,
-    backgroundColor: '#fff',
-  },
-  heroContent: { flex: 1, justifyContent: 'space-between', zIndex: 2 },
+  activeSession: { alignItems: 'center' },
+  timerLabel: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.7)', letterSpacing: 1.5, marginBottom: 4 },
+  timerText: { fontSize: 52, fontWeight: '900', color: '#fff', fontVariant: ['tabular-nums'] },
+  progressContainer: { width: '100%', marginTop: 12, alignItems: 'center' },
+  progressTrack: { width: '100%', height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#fff', borderRadius: 2 },
+  shiftTarget: { fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '700', marginTop: 8 },
 
-  activeSession: { alignItems: 'center', marginTop: 10 },
-  timerGradientCard: {
-    paddingVertical: 20,
-    paddingHorizontal: 24,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    width: '100%',
-    overflow: 'hidden',
-  },
-  timerLabel: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.75)', letterSpacing: 1.5, marginBottom: 6 },
-  timerText: {
-    fontSize: 56,
-    fontWeight: '900',
-    color: '#fff',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: -1.5,
-  },
-  progressTrack: {
-    width: '100%',
-    height: 5,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 3,
-    marginTop: 12,
-    overflow: 'hidden'
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 3
-  },
-  shiftTarget: { fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: '800', letterSpacing: 0.5 },
+  idleSession: { alignItems: 'center' },
+  idleIconBg: { width: 64, height: 64, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  idleTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
+  idleSub: { fontSize: 13, color: 'rgba(255,255,255,0.6)', textAlign: 'center' },
 
-  idleSession: { alignItems: 'center', marginTop: 10 },
-  idleIconBg: { width: 72, height: 72, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  idleTitle: { fontSize: 24, fontWeight: '900', color: '#fff', marginBottom: 6, letterSpacing: -0.5 },
-  idleSub: { fontSize: 14, color: 'rgba(255,255,255,0.5)', textAlign: 'center', maxWidth: 220, lineHeight: 20 },
+  doneSession: { alignItems: 'center' },
+  doneIconBg: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  doneTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
+  doneSub: { fontSize: 13, color: 'rgba(255,255,255,0.6)' },
 
-  doneSession: { alignItems: 'center', marginTop: 20 },
-  doneIconBg: { width: 84, height: 84, borderRadius: 42, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  doneTitle: { fontSize: 24, fontWeight: '900', color: '#fff', marginBottom: 8 },
-  doneSub: { fontSize: 14, color: 'rgba(255,255,255,0.5)', textAlign: 'center', maxWidth: 240 },
-
-  heroActions: { marginTop: 20 },
-  workModeRow: { flexDirection: 'row', gap: 8, marginBottom: 16, backgroundColor: 'rgba(255,255,255,0.1)', padding: 4, borderRadius: 20 },
-  workModeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 16 },
-  workModeBtnActive: { backgroundColor: '#fff', elevation: 2 },
-  workModeText: { color: 'rgba(255,255,255,0.7)', fontWeight: '700', fontSize: 13 },
+  heroActions: { marginTop: 16 },
+  workModeRow: { flexDirection: 'row', gap: 6, marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.15)', padding: 4, borderRadius: 20 },
+  workModeBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 16 },
+  workModeBtnActive: { backgroundColor: '#fff' },
+  workModeText: { color: 'rgba(255,255,255,0.7)', fontWeight: '700', fontSize: 12 },
   workModeTextActive: { color: colors.primary, fontWeight: '900' },
 
-  actionBtn: {
-    height: 60,
-    borderRadius: 24,
-    overflow: 'hidden',
-    elevation: 9,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-  },
-  actionBtnDisabled: { opacity: 0.8 },
-  actionBtnGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  actionBtnText: { fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
+  actionBtn: { height: 54, borderRadius: 20, overflow: 'hidden' },
+  actionBtnDisabled: { opacity: 0.6 },
+  actionBtnGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  actionBtnText: { fontSize: 15, fontWeight: '900' },
 
-  completedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.1)', paddingVertical: 12, borderRadius: 16 },
-  completedBadgeText: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.7)', letterSpacing: 1 },
+  completedBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.1)', paddingVertical: 10, borderRadius: 14 },
+  completedBadgeText: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.7)', letterSpacing: 1 },
 
-  sectionTitle: { fontSize: 20, fontWeight: '900', color: colors.text, marginBottom: 16, letterSpacing: -0.8 },
+  disclaimerContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', padding: 12, borderRadius: 12, marginBottom: 24 },
+  disclaimerText: { fontSize: 11, color: '#92400E', flex: 1, lineHeight: 16, fontWeight: '600' },
+
+  sectionTitle: { fontSize: 18, fontWeight: '900', color: colors.text, marginBottom: 16 },
   metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  metricItem: {
-    width: (width - 52) / 2,
-    padding: 16,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.05)', // semi‑transparent glass
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  miniMetric: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  miniMetricIcon: { width: 38, height: 38, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  miniMetricLabel: { fontSize: 11, fontWeight: '700', color: colors.textTertiary, textTransform: 'uppercase', marginBottom: 2, letterSpacing: 0.6 },
-  miniMetricValue: { fontSize: 16, fontWeight: '900', color: colors.text },
+  metricItem: { width: (width - 52) / 2, padding: 16, borderRadius: 24 },
+  miniMetric: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  miniMetricIcon: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  miniMetricLabel: { fontSize: 10, fontWeight: '800', color: colors.textTertiary, textTransform: 'uppercase', marginBottom: 2 },
+  miniMetricValue: { fontSize: 15, fontWeight: '900', color: colors.text },
 
-  lateNotice: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 18, borderRadius: 24, marginTop: 20, backgroundColor: colors.warning + '08', borderLeftWidth: 4, borderLeftColor: colors.warning },
-  lateIconBg: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.warning + '15', justifyContent: 'center', alignItems: 'center' },
-  lateTitle: { fontSize: 14, fontWeight: '800', color: colors.text },
-  lateSub: { fontSize: 12, fontWeight: '600', color: colors.textTertiary, marginTop: 2 },
+  lateNotice: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 20, backgroundColor: '#FFF7ED', borderLeftWidth: 4, borderLeftColor: '#F59E0B' },
+  lateIconBg: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#FFEDD5', justifyContent: 'center', alignItems: 'center' },
+  lateTitle: { fontSize: 13, fontWeight: '800', color: colors.text },
+  lateSub: { fontSize: 11, fontWeight: '600', color: colors.textTertiary, marginTop: 1 },
 
   modal: { margin: 0, justifyContent: 'flex-end' },
-  modalContent: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 40,
-    borderTopRightRadius: 40,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    maxHeight: '94%',
-  },
-  modalHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: colors.borderDark,
-    alignSelf: 'center', marginBottom: 16,
-  },
-  modalHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'flex-start', marginBottom: 20,
-    paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  modalTitle: { fontSize: 22, fontWeight: '900', color: colors.text, letterSpacing: -0.8 },
-  modalSubtitle: { fontSize: 13, fontWeight: '600', color: colors.textTertiary, marginTop: 3 },
-  modalCloseBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: colors.surfaceAlt,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  reportFieldBlock: { marginBottom: 4 },
-  reportLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18, marginBottom: 10 },
-  reportLabelIcon: { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  reportLabel: { fontSize: 13, fontWeight: '800', color: colors.textSecondary },
-  reportInput: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 18,
-    padding: 16,
-    fontSize: 15,
-    color: colors.text,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    lineHeight: 22,
-  },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 36, borderTopRightRadius: 36, paddingHorizontal: 20, paddingTop: 12, height: '90%' },
+  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#E2E8F0', alignSelf: 'center', marginBottom: 16 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: '900', color: colors.text },
+  modalSubtitle: { fontSize: 13, fontWeight: '600', color: colors.textTertiary, marginTop: 2 },
+  modalCloseBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+
+  reportFieldBlock: { marginBottom: 20 },
+  reportLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  reportLabel: { fontSize: 14, fontWeight: '800', color: colors.textSecondary },
+  reportInput: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, fontSize: 14, color: colors.text, borderWidth: 1, borderColor: '#E2E8F0', textAlignVertical: 'top' },
   participantsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  participantPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 24,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-  },
-  disclaimerContainer: {
-    backgroundColor: '#FFF3CD',
-    borderLeftWidth: 4,
-    borderLeftColor: '#FFC107',
-    padding: 10,
-    marginBottom: 12,
-    borderRadius: 8,
-  },
-  disclaimerText: {
-    fontSize: 12,
-    color: '#856404',
-    lineHeight: 18,
-  },
+  participantPill: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
   selectedPill: { backgroundColor: colors.primary, borderColor: colors.primary },
-  participantText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
-  modalFooter: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: 24,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 20,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  submitBtn: {
-    height: 58,
-    borderRadius: 22,
-    overflow: 'hidden',
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  submitBtnGradient: {
-    flex: 1, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center',
-    gap: 10,
-  },
-  submitBtnText: { color: '#fff', fontSize: 17, fontWeight: '900' },
-  disabledBtn: { opacity: 0.65 }
+  participantText: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
+  
+  modalFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  submitBtn: { height: 54, borderRadius: 18, overflow: 'hidden' },
+  submitBtnGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' }
 });
 
 export default AttendanceScreen;
