@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,13 +13,31 @@ import LeaveDashboardScreen from '../screens/leaves/LeaveDashboardScreen';
 import MyLeavesScreen from '../screens/leaves/MyLeavesScreen';
 import { isManagement } from '../utils/roleUtils';
 
-const LeaveTabs = ({ navigation }) => {
+const LeaveTabs = ({ navigation, route }) => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const pagerRef = useRef(null);
   const isAdmin = useMemo(() => isManagement(user?.role), [user]);
   
   const [activeIndex, setActiveIndex] = useState(0);
+
+  const onTabPress = useCallback((index) => {
+    setActiveIndex(index);
+    pagerRef.current?.setPage(index);
+  }, []);
+
+  // Listen to navigation params to switch active tab index dynamically
+  const tabParam = route?.params?.tab;
+  useEffect(() => {
+    if (tabParam === 'overview') {
+      onTabPress(0);
+      navigation.setParams({ tab: undefined });
+    } else if (tabParam === 'apply') {
+      onTabPress(1);
+      navigation.setParams({ tab: undefined });
+    }
+  }, [tabParam, onTabPress, navigation]);
+
 
   const tabs = useMemo(() => {
     const baseTabs = [
@@ -35,10 +53,7 @@ const LeaveTabs = ({ navigation }) => {
     return baseTabs;
   }, [isAdmin]);
 
-  const onTabPress = useCallback((index) => {
-    setActiveIndex(index);
-    pagerRef.current?.setPage(index);
-  }, []);
+
 
   const onPageSelected = useCallback((e) => {
     setActiveIndex(e.nativeEvent.position);

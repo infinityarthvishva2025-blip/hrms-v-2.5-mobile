@@ -1,6 +1,7 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from '../utils/storage';
 import { login as loginApi, logout as logoutApi, getMe } from '../api/auth.api';
+import client, { setSessionExpiredHandler } from '../api/client';
 import Toast from 'react-native-toast-message';
 
 export const AuthContext = createContext(null);
@@ -9,36 +10,58 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Tracks the ID of the in-flight background session check.
+  // Setting it to null cancels the check before it can mutate state.
+  const bgCheckIdRef = useRef(null);
+
+  // Register a handler so the axios interceptor can call setUser(null)
+  // when a refresh token rotation fails (keeps React state in sync).
+  useEffect(() => {
+    setSessionExpiredHandler(() => setUser(null));
+    return () => setSessionExpiredHandler(null);
+  }, []);
+
   const initAuth = useCallback(async () => {
     try {
       setLoading(true);
       const token = await storage.getAccessToken();
       const userData = await storage.getUserInfo();
-      
+
       if (token && userData) {
         setUser(userData);
-        // CRITICAL PERFORMANCE OPTIMIZATION:
-        // Set loading to false immediately if we have cached data.
-        // This allows the user to see the dashboard instantly.
+        // Show the dashboard immediately from cache, then silently validate.
         setLoading(false);
-        
-        // Silently refresh profile data in the background.
+
+        // Stamp this check so login() can cancel it.
+        const checkId = Symbol();
+        bgCheckIdRef.current = checkId;
+
         try {
-          const res = await getMe();
-          if (res.data?.data) {
+          // _skipRefresh: true prevents the 401 interceptor from attempting
+          // a token rotation here, which would race with a concurrent login().
+          const res = await client.get('/auth/me', { _skipRefresh: true });
+
+          // Only update state if this check hasn't been cancelled by login().
+          if (bgCheckIdRef.current === checkId && res.data?.data) {
             setUser(res.data.data);
             await storage.setUserInfo(res.data.data);
           }
         } catch (err) {
-          console.error("Background session check failed:", err.message);
-          // If the token is invalid, the axios interceptor will handle the logout.
+          // Token is expired/invalid. The _skipRefresh flag means the interceptor
+          // will NOT try to rotate tokens here — it just rejects silently.
+          // The user will need to log in again; their state is cleared by the
+          // session-expired handler if the refresh had already been attempted.
+          if (bgCheckIdRef.current === checkId) {
+            await storage.clearAll();
+            setUser(null);
+          }
         }
       } else {
         await storage.clearAll();
         setLoading(false);
       }
     } catch (e) {
-      console.error(e);
+      console.error('initAuth error:', e);
       await storage.clearAll();
       setLoading(false);
     }
@@ -49,6 +72,11 @@ export const AuthProvider = ({ children }) => {
   }, [initAuth]);
 
   const login = async (credentials) => {
+    // Cancel any in-flight background session check.
+    // This prevents the background getMe()'s 401 from racing with
+    // the fresh tokens we're about to receive and store.
+    bgCheckIdRef.current = null;
+
     const { data } = await loginApi(credentials);
     const { accessToken, refreshToken, employee } = data.data;
 
@@ -60,15 +88,16 @@ export const AuthProvider = ({ children }) => {
     Toast.show({
       type: 'success',
       text1: 'Login Successful',
-      text2: `Welcome back, ${employee.name}`
+      text2: `Welcome back, ${employee.name}`,
     });
   };
 
   const logout = async () => {
+    bgCheckIdRef.current = null;
     try {
       await logoutApi();
     } catch (error) {
-      console.error(error);
+      console.error('Logout API error:', error);
     } finally {
       await storage.clearAll();
       setUser(null);
@@ -79,11 +108,11 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data } = await getMe();
       if (data?.data) {
-         setUser(data.data);
-         await storage.setUserInfo(data.data);
+        setUser(data.data);
+        await storage.setUserInfo(data.data);
       }
     } catch (e) {
-      console.error("Failed to refresh profile", e);
+      console.error('Failed to refresh profile', e);
     }
   };
 

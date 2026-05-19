@@ -50,10 +50,10 @@ const PremiumSplashScreen = ({ onFinish }) => {
       })
     ).start();
 
-    // Minimum display time for premium feel
+    // Optimal display time to ensure animations finish without artificially delaying the user
     const timer = setTimeout(() => {
       if (onFinish) onFinish();
-    }, 2000); // 2.5 seconds total
+    }, 1500); // 1.5 seconds total
 
     return () => clearTimeout(timer);
   }, []);

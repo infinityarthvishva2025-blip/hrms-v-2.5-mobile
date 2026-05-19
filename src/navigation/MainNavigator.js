@@ -12,7 +12,7 @@ import DashboardScreen from '../screens/dashboard/DashboardScreen';
 import AttendanceStack from './AttendanceStack';
 import LeaveStack from './LeaveStack';
 import EmployeeStack from './EmployeeStack';
-import MenuStack from './MenuStack';
+import MenuScreen from '../screens/menu/MenuScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -116,7 +116,7 @@ const MainNavigator = () => {
       
       <Tab.Screen 
         name="MenuTab" 
-        component={MenuStack} 
+        component={MenuScreen} 
         options={{ title: 'More' }} 
       />
     </Tab.Navigator>

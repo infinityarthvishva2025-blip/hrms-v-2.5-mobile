@@ -147,10 +147,10 @@ const LeaveApprovalScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerArea}>
+      {/* <View style={styles.headerArea}>
          <Text style={styles.pageTitle}>Approvals</Text>
          <Text style={styles.pageSub}>Review pending leave applications</Text>
-      </View>
+      </View> */}
 
       {loading && !data ? (
         <View style={styles.loader}>
@@ -158,7 +158,7 @@ const LeaveApprovalScreen = ({ navigation }) => {
         </View>
       ) : (
         <FlatList
-          data={data?.leaves || []}
+          data={Array.isArray(data) ? data : (data?.leaves || [])}
           keyExtractor={(item) => item._id}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}

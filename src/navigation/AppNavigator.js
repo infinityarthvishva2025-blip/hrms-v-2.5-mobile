@@ -10,6 +10,13 @@ import MainNavigator from './MainNavigator';
 import PremiumSplashScreen from '../components/common/PremiumSplashScreen';
 import * as SplashScreen from 'expo-splash-screen';
 
+// Shared Screens (accessible from multiple tabs, render above the tab bar)
+import HolidayScreen from '../screens/holidays/HolidayScreen';
+import AnnouncementScreen from '../screens/announcements/AnnouncementScreen';
+import GurukulStack from './GurukulStack';
+import ProfileStack from './ProfileStack';
+import PayrollStack from './PayrollStack';
+
 const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => {
@@ -38,22 +45,20 @@ const AppNavigator = () => {
         responseListener.remove();
       };
     }
-  }, [user]);
+  }, [user?._id]);
 
   // Handle native splash screen hiding
   React.useEffect(() => {
     const prepare = async () => {
       try {
-        // If JS Splash has finished its minimum time, hide the native one
-        if (splashFinished) {
-          await SplashScreen.hideAsync();
-        }
+        // Hide the native splash screen immediately so our JS splash is visible
+        await SplashScreen.hideAsync();
       } catch (e) {
         console.warn(e);
       }
     };
     prepare();
-  }, [splashFinished]);
+  }, []);
 
   // Show Premium Splash until BOTH the auth check is done AND the animation minimum time is met
   if (loading || !splashFinished) {
@@ -63,7 +68,14 @@ const AppNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
-        <Stack.Screen name="Main" component={MainNavigator} />
+        <Stack.Group>
+          <Stack.Screen name="Main" component={MainNavigator} />
+          <Stack.Screen name="Holidays" component={HolidayScreen} />
+          <Stack.Screen name="Announcements" component={AnnouncementScreen} />
+          <Stack.Screen name="Gurukul" component={GurukulStack} />
+          <Stack.Screen name="Profile" component={ProfileStack} />
+          <Stack.Screen name="Payroll" component={PayrollStack} />
+        </Stack.Group>
       ) : (
         <Stack.Screen name="Auth" component={AuthNavigator} />
       )}

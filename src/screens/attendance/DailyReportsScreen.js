@@ -43,7 +43,7 @@ const DailyReportsScreen = () => {
     });
     
     // Filter records that have todayWork content
-    return data.records.filter(r => r.todayWork);
+    return (data?.data?.records || []).filter(r => r.todayWork);
   }, [dateRange]);
 
   const { data: reports, loading, execute: fetchReports } = useFetch(fetchReportsFunc, null);

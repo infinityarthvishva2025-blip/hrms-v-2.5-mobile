@@ -19,6 +19,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import Toast from 'react-native-toast-message';
+import { storage } from '../../utils/storage';
 
 const SectionHeader = ({ title, icon }) => (
   <View style={styles.sectionHeader}>
@@ -46,32 +47,44 @@ const SalarySlipScreen = ({ route, navigation }) => {
   const [downloading, setDownloading] = useState(false);
 
   const handleDownload = async () => {
-    if (!slip?._id) {
-      Toast.show({ type: 'error', text1: 'Not Available', text2: 'PDF slip data missing.' });
-      return;
-    }
 
-    setDownloading(true);
-    try {
-      const pdfUrl = `${config.API_URL}/payroll/salary-slip/${slip._id}`;
-      const filename = `SalarySlip_${slip.employeeCode}_${slip.month}_${slip.year}.pdf`;
-      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+          Toast.show({ 
+            type: 'success', 
+            text1: 'Upcoming Feature',
+            text2: 'next version '
+          });
+
+
+
+    // if (!slip?._id) {
+    //   Toast.show({ type: 'error', text1: 'Not Available', text2: 'PDF slip data missing.' });
+    //   return;
+    // }
+
+    // setDownloading(true);
+    // try {
+    //   const pdfUrl = `${config.API_URL}/payroll/salary-slip/${slip._id}`;
+    //   const filename = `SalarySlip_${slip.employeeCode}_${slip.month}_${slip.year}.pdf`;
+    //   const fileUri = `${FileSystem.cacheDirectory}${filename}`;
       
-      const downloadRes = await FileSystem.downloadAsync(pdfUrl, fileUri);
+    //   const token = await storage.getAccessToken();
+    //   const headers = token ? { Authorization: `Bearer ${token}` } : {};
       
-      if (downloadRes.status === 200) {
-        await Sharing.shareAsync(downloadRes.uri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Share Salary Slip',
-          UTI: 'com.adobe.pdf'
-        });
-      }
-    } catch (error) {
-      console.error(error);
-      Toast.show({ type: 'error', text1: 'Failed', text2: 'Error downloading PDF' });
-    } finally {
-      setDownloading(false);
-    }
+    //   const downloadRes = await FileSystem.downloadAsync(pdfUrl, fileUri, { headers });
+      
+    //   if (downloadRes.status === 200) {
+    //     await Sharing.shareAsync(downloadRes.uri, {
+    //       mimeType: 'application/pdf',
+    //       dialogTitle: 'Share Salary Slip',
+    //       UTI: 'com.adobe.pdf'
+    //     });
+    //   }
+    // } catch (error) {
+    //   console.error(error);
+    //   Toast.show({ type: 'error', text1: 'Failed', text2: 'Error downloading PDF' });
+    // } finally {
+    //   setDownloading(false);
+    // }
   };
 
   if (!slip) return <View style={styles.center}><Text>No data found</Text></View>;
