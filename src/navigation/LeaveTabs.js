@@ -81,7 +81,7 @@ const LeaveTabs = ({ navigation, route }) => {
           end={{ x: 1, y: 0 }}
         />
 
-        <View style={styles.headerTop}>
+        {/* <View style={styles.headerTop}>
           <TouchableOpacity 
             style={styles.headerBtn}
             onPress={() => {}}
@@ -104,7 +104,7 @@ const LeaveTabs = ({ navigation, route }) => {
               style={styles.headerAvatar} 
             />
           </View>
-        </View>
+        </View> */}
 
         <ScrollView 
           horizontal 

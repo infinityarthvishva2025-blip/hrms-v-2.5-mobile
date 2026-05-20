@@ -21,7 +21,7 @@
     #loadingOverlay{
       position:fixed;inset:0;background:#080C14;
       display:flex;flex-direction:column;align-items:center;justify-content:center;
-      z-index:100;transition:opacity .2s ease;
+      z-index:100;transition:opacity .3s ease;
     }
     #loadingOverlay.hidden{opacity:0;pointer-events:none}
     .loader-ring{
@@ -31,18 +31,19 @@
     }
     @keyframes spin{to{transform:rotate(360deg)}}
 
-    .hdr{width:100%;padding:env(safe-area-inset-top,15px) 24px 0;text-align:center}
-    .hdr-title{font-size:18px;font-weight:800}
-    .hdr-sub{font-size:12px;color:#6B7280;margin-top:2px}
+    .hdr{width:100%;padding:env(safe-area-inset-top,25px) 24px 0;text-align:center}
+    .hdr-title{font-size:20px;font-weight:800;letter-spacing:-0.3px}
+    .hdr-sub{font-size:13px;color:#6B7280;margin-top:4px}
 
     .cam-stage{
-      position:relative;margin-top:20px;
-      width:min(280px,80vw);height:min(280px,80vw);
-      padding:10px;
+      position:relative;margin-top:30px;
+      width:min(280px,75vw);height:min(280px,75vw);
+      padding:8px;
     }
     .cam-wrap{
       position:relative;width:100%;height:100%;
       border-radius:50%;overflow:hidden;background:#000;
+      box-shadow:0 0 0 4px rgba(255,255,255,0.05);
     }
     video{
       width:100%;height:100%;object-fit:cover;
@@ -59,7 +60,7 @@
       pointer-events:none;z-index:3;
     }
     .ring-arc{
-      fill:none;stroke:var(--rc);stroke-width:3;stroke-linecap:round;
+      fill:none;stroke:var(--rc);stroke-width:3.5;stroke-linecap:round;
       transition:stroke .2s ease;transform-origin:center;
     }
     .ring-arc.spinning{animation:rotateCW 2s linear infinite}
@@ -67,23 +68,28 @@
 
     .face-oval{
       position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:65%;height:80%;border:1px dashed rgba(255,255,255,.15);border-radius:50%;
-      z-index:1;transition:border-color .2s;
+      width:68%;height:82%;border:2px dashed rgba(255,255,255,.2);border-radius:50%;
+      z-index:1;transition:border-color .2s, border-style .2s;
     }
-    .face-oval.lit{border-color:var(--green)}
+    .face-oval.lit{border-color:var(--green);border-style:solid}
 
-    .status-wrap{margin-top:25px;text-align:center;padding:0 24px;min-height:70px}
-    .s-text{font-size:15px;font-weight:700;color:#F9FAFB}
-    .s-sub{font-size:12px;color:#6B7280;margin-top:4px}
+    .status-wrap{margin-top:30px;text-align:center;padding:0 24px;min-height:70px}
+    .s-text{font-size:16px;font-weight:700;color:#F9FAFB}
+    .s-sub{font-size:13px;color:#6B7280;margin-top:6px}
 
-    .prog-wrap{width:min(240px,70vw);height:3px;background:rgba(255,255,255,.05);border-radius:2px;margin-top:15px;overflow:hidden}
+    .prog-wrap{width:min(240px,65vw);height:4px;background:rgba(255,255,255,.05);border-radius:2px;margin-top:15px;overflow:hidden}
     .prog-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--teal));width:0%;transition:width .15s ease}
 
-    .btn-row{display:flex;padding:20px 24px calc(env(safe-area-inset-bottom,0px) + 20px);width:100%;max-width:320px}
+    .btn-row{display:flex;padding:30px 24px calc(env(safe-area-inset-bottom,0px) + 20px);width:100%;max-width:320px}
     .btn-cancel{
-      flex:1;background:rgba(255,255,255,.05);color:#9CA3AF;
-      border:1px solid rgba(255,255,255,.1);padding:14px;border-radius:15px;
+      flex:1;background:rgba(255,255,255,.06);color:#E5E7EB;
+      border:1px solid rgba(255,255,255,.1);padding:14px;border-radius:16px;
       font-size:14px;font-weight:600;cursor:pointer;
+      transition:background .2s;
+      outline:none;
+    }
+    .btn-cancel:active{
+      background:rgba(255,255,255,.12);
     }
   </style>
 </head>
@@ -91,12 +97,12 @@
 
 <div id="loadingOverlay">
   <div class="loader-ring"></div>
-  <div class="loader-text">Waking up AI...</div>
+  <div class="loader-text" id="loText">AI Core Starting...</div>
 </div>
 
 <div class="hdr">
-  <div class="hdr-title">Face Check</div>
-  <div class="hdr-sub">Look at the camera</div>
+  <div class="hdr-title" id="hdrTitle">Face ID Verification</div>
+  <div class="hdr-sub" id="hdrSub">Position your face inside the circle</div>
 </div>
 
 <div class="cam-stage">
@@ -106,13 +112,13 @@
   </div>
   <div class="ring-glow" id="glow"></div>
   <svg class="ring-svg" viewBox="0 0 320 320">
-    <circle class="ring-arc spinning" cx="160" cy="160" r="158" id="arc" stroke-dasharray="10 15"/>
+    <circle class="ring-arc spinning" cx="160" cy="160" r="156" id="arc" stroke-dasharray="12 18"/>
   </svg>
 </div>
 
 <div class="status-wrap">
-  <div class="s-text" id="sTxt">Preparing...</div>
-  <div class="s-sub" id="sSub">Wait a second</div>
+  <div class="s-text" id="sTxt">Ready</div>
+  <div class="s-sub" id="sSub">Align your face to begin</div>
 </div>
 
 <div class="prog-wrap"><div class="prog-fill" id="prog"></div></div>
@@ -130,6 +136,8 @@ const sSub = document.getElementById('sSub');
 const prog = document.getElementById('prog');
 const faceOval = document.getElementById('faceOval');
 const lo = document.getElementById('loadingOverlay');
+const loText = document.getElementById('loText');
+const hdrTitle = document.getElementById('hdrTitle');
 
 let stream = null, isProcessing = false;
 let detInterval = null;
@@ -148,25 +156,55 @@ function setUI(txt, sub, p, color) {
   }
 }
 
-async function start() {
+// ── 1. PRE-LOAD AND PRE-WARM MODELS ──
+async function prewarmModels() {
   try {
+    loText.textContent = "Waking up AI Core...";
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
     ]);
     
+    lo.classList.add('hidden');
+    setUI('AI Offline', 'Waiting for check-in action...', 100, '#10B981');
+    postRN({ type: 'ready' }); // Signals to React Native that pre-warming is completed!
+  } catch (e) {
+    loText.textContent = "AI Offline: " + e.message;
+    setUI('AI Offline', e.message, 0, '#EF4444');
+    postRN({ type: 'error', error: 'AI Core model pre-loading failed: ' + e.message });
+  }
+}
+
+// ── 2. DYNAMIC CAMERA LIFECYCLE MANAGEMENT ──
+window.startCamera = async (op, savedDescriptor) => {
+  try {
+    isProcessing = false;
+    window.FACE_OP = op;
+    window.USER_FACE_DESCRIPTOR = savedDescriptor;
+
+    hdrTitle.textContent = op === 'register' ? 'Register Face ID' : 'Identity Verification';
+    faceOval.classList.remove('lit');
+    arc.classList.add('spinning');
+    
+    // Stop any residual stream tracks
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+    }
+    
+    setUI('Starting Camera...', 'Initializing capture stream', 20, '#2076C7');
+    
     stream = await navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: 'user', width: 360, height: 360 }, 
+      video: { facingMode: 'user', width: { ideal: 360 }, height: { ideal: 360 } }, 
       audio: false 
     });
+    
     video.srcObject = stream;
+    setUI('Position Face', 'Fit inside the dashed oval', 45, '#2076C7');
     
-    lo.classList.add('hidden');
-    setUI('Scanning...', 'Keep your face visible', 10, '#2076C7');
-    postRN({ type: 'ready' });
+    if (detInterval) clearInterval(detInterval);
     
-    // High-speed scan: 100ms interval
+    // High-frequency detection scan loop (every 100ms)
     detInterval = setInterval(async () => {
       if (isProcessing || video.readyState < 2) return;
       
@@ -178,44 +216,74 @@ async function start() {
     }, 100);
     
   } catch (e) {
-    setUI('Error', e.message, 0, '#EF4444');
-    postRN({ type: 'error', error: e.message });
+    setUI('Camera Offline', e.message, 0, '#EF4444');
+    postRN({ type: 'error', error: 'Camera access failed: ' + e.message });
   }
-}
+};
+
+window.stopCamera = () => {
+  isProcessing = false;
+  faceOval.classList.remove('lit');
+  if (detInterval) {
+    clearInterval(detInterval);
+    detInterval = null;
+  }
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+  setUI('Standby', 'Camera deactivated safely', 0, '#374151');
+};
 
 async function capture() {
-  setUI('Verifying...', 'One moment...', 80, '#F59E0B');
+  setUI('Verifying Identity...', 'Matching structural descriptor', 85, '#F59E0B');
   faceOval.classList.add('lit');
   arc.classList.remove('spinning');
   
   try {
-    // Single heavy pass for descriptor
     const det = await faceapi.detectSingleFace(video, SCAN_OPTS).withFaceLandmarks().withFaceDescriptor();
     
     if (!det) {
+      // Face lost, resume scanning
       isProcessing = false;
       faceOval.classList.remove('lit');
       arc.classList.add('spinning');
+      setUI('Face Lost', 'Re-align face inside the oval', 45, '#2076C7');
       return;
     }
 
+    // Match if not a new registration
     if (window.FACE_OP !== 'register') {
       const saved = window.USER_FACE_DESCRIPTOR;
       if (saved) {
-        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(Object.values(saved)));
+        // Handle Float32Array conversions efficiently
+        const savedDescriptorArray = new Float32Array(Object.values(saved));
+        const dist = faceapi.euclideanDistance(det.descriptor, savedDescriptorArray);
+        
+        // Strict modern threshold for secure commercial matching
         if (dist > 0.55) {
-          setUI('No Match', 'Try again', 0, '#EF4444');
-          setTimeout(() => { isProcessing = false; setUI('Scanning...', 'Try again', 10, '#2076C7'); }, 1500);
+          setUI('Verification Failed', 'Faces do not match', 0, '#EF4444');
+          postRN({ type: 'error', error: 'Face ID does not match registered profile. Try again.' });
+          
+          setTimeout(() => { 
+            isProcessing = false; 
+            faceOval.classList.remove('lit');
+            arc.classList.add('spinning');
+            setUI('Scanning...', 'Align face again', 45, '#2076C7'); 
+          }, 2000);
           return;
         }
       }
     }
 
+    // Take jpeg thumbnail securely
     const canvas = document.createElement('canvas');
     canvas.width = 300; canvas.height = 300;
     canvas.getContext('2d').drawImage(video, 0, 0, 300, 300);
     
-    setUI('Success!', 'Redirecting...', 100, '#10B981');
+    setUI('Identity Verified ✓', 'Syncing secure logs...', 100, '#10B981');
+    
     postRN({ 
       type: 'descriptor', 
       descriptor: Array.from(det.descriptor), 
@@ -224,16 +292,19 @@ async function capture() {
     
   } catch (e) {
     isProcessing = false;
+    faceOval.classList.remove('lit');
+    arc.classList.add('spinning');
+    setUI('Scan Timeout', 'Failed to calculate facial descriptors', 45, '#2076C7');
   }
 }
 
-window.startVerification = () => { isProcessing = false; faceOval.classList.remove('lit'); };
 document.getElementById('cancelBtn').onclick = () => {
-  if (stream) stream.getTracks().forEach(t => t.stop());
+  stopCamera();
   postRN({ type: 'cancel' });
 };
 
-start();
+// Start initialization immediately on load
+prewarmModels();
 </script>
 </body>
 </html>

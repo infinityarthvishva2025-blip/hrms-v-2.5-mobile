@@ -63,7 +63,7 @@ const EmployeeTabs = ({ navigation }) => {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
         />
-        <View style={styles.headerTop}>
+        {/* <View style={styles.headerTop}>
           <TouchableOpacity 
             //onPress={() => navigation.getParent()?.openDrawer()} 
             style={styles.headerBtn}
@@ -87,7 +87,7 @@ const EmployeeTabs = ({ navigation }) => {
               style={styles.headerAvatar} 
             />
           </View>
-        </View>
+        </View> */}
 
         {/* Integrated Tab Bar - Sleeker & More Compact */}
         <ScrollView 

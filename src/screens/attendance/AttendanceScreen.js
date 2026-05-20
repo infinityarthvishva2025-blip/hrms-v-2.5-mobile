@@ -53,8 +53,30 @@ const AttendanceScreen = ({ navigation }) => {
   useFocusEffect(
     React.useCallback(() => {
       refreshProfile();
+      return () => {
+        // Safe navigation blur cleanup: automatically release camera resources if user exits screen
+        webviewRef.current?.injectJavaScript(`
+          if (window.stopCamera) { window.stopCamera(); }
+          true;
+        `);
+        setShowFaceModal(false);
+      };
     }, [])
   );
+
+  // AppState background/foreground listener for perfect privacy & resource safety
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        webviewRef.current?.injectJavaScript(`
+          if (window.stopCamera) { window.stopCamera(); }
+          true;
+        `);
+        setShowFaceModal(false);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // Geo state
   const [geoStatus, setGeoStatus] = useState('checking');
@@ -101,19 +123,33 @@ const AttendanceScreen = ({ navigation }) => {
   });
 
   const locationRef = useRef(null);
+  const lastVerifiedRef = useRef(0);
+  const isVerifyingRef = useRef(false);
 
   const verifyLocation = useCallback(async (office, forceHighAccuracy = false) => {
     if (!office) return 'invalid';
+    
+    // ── THROTTLE: If verified successfully in the last 20 seconds, return early ──
+    const now = Date.now();
+    if (!forceHighAccuracy && now - lastVerifiedRef.current < 20000 && locationRef.current) {
+      return 'valid';
+    }
+    
+    // Prevent duplicate concurrent requests
+    if (isVerifyingRef.current) return 'checking';
+    isVerifyingRef.current = true;
     setGeoStatus('checking');
+
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setGeoStatus('permission_denied');
+        isVerifyingRef.current = false;
         return 'permission_denied';
       }
 
       // 1. Try quick cached location first (very fast)
-      const last = await Location.getLastKnownPositionAsync({ maxAge: 30000 }); // Use location from last 30s
+      const last = await Location.getLastKnownPositionAsync({ maxAge: 60000 }); // Cached location in last 60s
       if (last?.coords) {
         const dist = calculateDistance(last.coords.latitude, last.coords.longitude, office.lat, office.lng);
         if (dist <= office.radius) {
@@ -121,16 +157,17 @@ const AttendanceScreen = ({ navigation }) => {
           setUserLocation(last.coords);
           locationRef.current = last.coords;
           setGeoStatus('valid');
+          lastVerifiedRef.current = Date.now();
+          isVerifyingRef.current = false;
           // If we found a valid cached location and don't strictly NEED a fresh high-accuracy one, return early
           if (!forceHighAccuracy) return 'valid';
         }
       }
 
       // 2. Get fresh location with Balanced accuracy (much faster than High)
-      // Balanced uses WiFi/Cell which is usually instant and accurate to ~30m
       const loc = await Location.getCurrentPositionAsync({ 
         accuracy: Location.Accuracy.Balanced,
-        timeout: 5000 // 5s timeout to prevent hanging
+        timeout: 4000 // 4s timeout to prevent hanging
       });
       
       if (loc?.coords) {
@@ -140,12 +177,18 @@ const AttendanceScreen = ({ navigation }) => {
         setGeoDistance(Math.round(dist));
         const finalStatus = dist <= office.radius ? 'valid' : 'invalid';
         setGeoStatus(finalStatus);
+        if (finalStatus === 'valid') {
+          lastVerifiedRef.current = Date.now();
+        }
+        isVerifyingRef.current = false;
         return finalStatus;
       }
+      isVerifyingRef.current = false;
       return 'invalid';
     } catch (error) {
       console.error('Location error:', error);
       setGeoStatus('error');
+      isVerifyingRef.current = false;
       return 'error';
     }
   }, []);
@@ -160,10 +203,20 @@ const AttendanceScreen = ({ navigation }) => {
   const fetchStatus = useCallback(async () => {
     try {
       const { data } = await getTodayStatus();
-      setTodayRecord(data.data.record);
+      const record = data.data.record;
+      setTodayRecord(record);
       if (data.data.office) {
         setOfficeSettings(data.data.office);
-        if (!isBypassUser) {
+        
+        const isCheckedIn = !!record?.inTime;
+        const isCheckedOut = !!record?.outTime;
+
+        // Skip geo query if user checked out today, remote, or already verified
+        if (isCheckedOut) {
+          setGeoStatus('valid');
+        } else if (isCheckedIn && record?.workMode !== 'Office') {
+          setGeoStatus('valid');
+        } else if (!isBypassUser) {
           verifyLocation(data.data.office);
         } else {
           setGeoStatus('valid');
@@ -251,15 +304,17 @@ const AttendanceScreen = ({ navigation }) => {
 
     const currentMode = todayRecord?.workMode || workMode;
     
-    // Improved Geo Validation
+    // Improved Geo Validation (Instant if already valid!)
     if (!isBypassUser && currentMode === 'Office') {
-       setActionLoading(true);
-       const result = await verifyLocation(officeSettings, true);
-       setActionLoading(false);
+       if (geoStatus !== 'valid') {
+          setActionLoading(true);
+          const result = await verifyLocation(officeSettings, true);
+          setActionLoading(false);
 
-       if (result !== 'valid' && op === 'checkin') {
-          Toast.show({ type: 'error', text1: 'Out of Range', text2: 'Please move closer to office zone' });
-          return;
+          if (result !== 'valid' && op === 'checkin') {
+             Toast.show({ type: 'error', text1: 'Out of Range', text2: 'Please move closer to office zone' });
+             return;
+          }
        }
     }
 
@@ -277,28 +332,48 @@ const AttendanceScreen = ({ navigation }) => {
     setFaceOp(op);
     faceOpRef.current = op;
     setShowFaceModal(true);
+
+    // Warm up the camera stream inside background WebView instantly
+    setTimeout(() => {
+      webviewRef.current?.injectJavaScript(`
+        if (window.startCamera) {
+          window.startCamera('${op}', ${JSON.stringify(user.faceDescriptor || [])});
+        }
+        true;
+      `);
+    }, 100);
   };
 
   const handleWebViewMessage = async (event) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === 'ready') {
-        setTimeout(() => {
-          webviewRef.current?.injectJavaScript(`
-            window.USER_FACE_DESCRIPTOR = ${JSON.stringify(user.faceDescriptor || [])};
-            window.FACE_OP = '${faceOpRef.current}';
-            window.CONFIG_LOADED = true;
-            true;
-          `);
-        }, 100);
+        console.log('[FaceVerify] WebView loaded and models pre-warmed successfully.');
       } else if (msg.type === 'error') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Toast.show({ type: 'error', text1: 'Verification Failed', text2: msg.error });
+        // Cleanly stop camera
+        webviewRef.current?.injectJavaScript(`
+          if (window.stopCamera) { window.stopCamera(); }
+          true;
+        `);
+        setShowFaceModal(false);
       } else if (msg.type === 'cancel') {
+        // Cleanly stop camera
+        webviewRef.current?.injectJavaScript(`
+          if (window.stopCamera) { window.stopCamera(); }
+          true;
+        `);
         setShowFaceModal(false);
       } else if (msg.type === 'descriptor') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Toast.show({ type: 'success', text1: 'Identity Verified ✓' });
+        
+        // Cleanly stop camera
+        webviewRef.current?.injectJavaScript(`
+          if (window.stopCamera) { window.stopCamera(); }
+          true;
+        `);
         setShowFaceModal(false);
 
         const op = faceOpRef.current;
@@ -631,27 +706,41 @@ const AttendanceScreen = ({ navigation }) => {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      <Modal
-        isVisible={showFaceModal}
-        style={{ margin: 0 }}
-        backdropOpacity={1}
-        backdropColor="#0F172A"
-      >
-        <View style={{ flex: 1, backgroundColor: '#0F172A', paddingTop: Platform.OS === 'ios' ? 50 : 0 }}>
-          {showFaceModal && !!htmlContent && (
-            <WebView
-              ref={webviewRef}
-              source={{ html: htmlContent, baseUrl: 'https://localhost' }}
-              originWhitelist={['*']}
-              style={{ flex: 1 }}
-              onMessage={handleWebViewMessage}
-              mediaPlaybackRequiresUserAction={false}
-              allowsInlineMediaPlayback={true}
-              onPermissionRequest={(request) => request.grant(request.resources)}
-            />
-          )}
+      {/* Background pre-warmed WebView for 0ms startup Face ID Verification */}
+      {!!htmlContent && (
+        <View
+          style={[
+            styles.faceVerifyOverlay,
+            showFaceModal ? styles.faceVerifyOverlayVisible : styles.faceVerifyOverlayHidden
+          ]}
+        >
+          <WebView
+            ref={webviewRef}
+            source={{ html: htmlContent, baseUrl: 'https://localhost' }}
+            originWhitelist={['*']}
+            style={{ flex: 1 }}
+            onMessage={handleWebViewMessage}
+            mediaPlaybackRequiresUserAction={false}
+            allowsInlineMediaPlayback={true}
+            onPermissionRequest={(request) => request.grant(request.resources)}
+            onError={(e) => {
+              console.error('[FaceVerifyWebView] Error:', e.nativeEvent);
+              Toast.show({ type: 'error', text1: 'Scanner Error', text2: 'Biometric engine failed to load' });
+              setShowFaceModal(false);
+            }}
+            onHttpError={(e) => {
+              console.error('[FaceVerifyWebView] HTTP Error:', e.nativeEvent);
+              Toast.show({ type: 'error', text1: 'Scanner Error', text2: 'Asset network error occurred' });
+              setShowFaceModal(false);
+            }}
+            onRenderProcessGone={(e) => {
+              console.error('[FaceVerifyWebView] Render process crashed:', e.nativeEvent);
+              Toast.show({ type: 'error', text1: 'Scanner Crashed', text2: 'Reloading biometric engine...' });
+              setShowFaceModal(false);
+            }}
+          />
         </View>
-      </Modal>
+      )}
 
       <Modal
         isVisible={showReportModal}
@@ -704,6 +793,20 @@ const AttendanceScreen = ({ navigation }) => {
                   multiline
                   value={reportForm.pendingWork}
                   onChangeText={t => setReportForm({ ...reportForm, pendingWork: t })}
+                />
+              </View>
+
+              <View style={styles.reportFieldBlock}>
+                <View style={styles.reportLabelRow}>
+                  <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
+                  <Text style={styles.reportLabel}>Issues Faced / Blockers</Text>
+                </View>
+                <TextInput
+                  style={[styles.reportInput, { height: 80 }]}
+                  placeholder="Any blockers or issues faced today? (Optional)"
+                  multiline
+                  value={reportForm.issuesFaced}
+                  onChangeText={t => setReportForm({ ...reportForm, issuesFaced: t })}
                 />
               </View>
 
@@ -835,7 +938,28 @@ const styles = StyleSheet.create({
   modalFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   submitBtn: { height: 54, borderRadius: 18, overflow: 'hidden' },
   submitBtnGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' }
+  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  
+  faceVerifyOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#080C14',
+  },
+  faceVerifyOverlayVisible: {
+    width: '100%',
+    height: '100%',
+    opacity: 1,
+    zIndex: 999,
+  },
+  faceVerifyOverlayHidden: {
+    width: 0,
+    height: 0,
+    opacity: 0,
+    zIndex: -1,
+  }
 });
 
 export default AttendanceScreen;

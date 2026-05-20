@@ -11,9 +11,9 @@ const AppHeader = ({ onMenuPress }) => {
   return (
     <View style={styles.container}>
       <View style={styles.left}>
-        <TouchableOpacity onPress={onMenuPress} style={styles.menuButton}>
+        {/* <TouchableOpacity onPress={onMenuPress} style={styles.menuButton}>
           <Ionicons name="menu" size={28} color={colors.surface} />
-        </TouchableOpacity>
+        </TouchableOpacity> */}
         <Text style={styles.title}>HRMS</Text>
       </View>
       

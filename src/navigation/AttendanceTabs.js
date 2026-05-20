@@ -70,19 +70,19 @@ const AttendanceTabs = ({ navigation }) => {
         />
 
         <View style={styles.headerTop}>
-          <TouchableOpacity
+          {/* <TouchableOpacity
             style={styles.headerBtn}
             onPress={() => { }}
           >
             <Ionicons name="menu-outline" size={20} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.headerTitleCenter}>
+          </TouchableOpacity> */}
+          {/* <View style={styles.headerTitleCenter}>
             <View style={styles.moduleBadge}>
               <Text style={styles.moduleBadgeText}>ATTENDANCE</Text>
             </View>
-          </View>
+          </View> */}
 
-          <View style={styles.headerRight}>
+          {/* <View style={styles.headerRight}>
             <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate('MenuTab', { screen: 'Announcements' })} >
               <Ionicons name="notifications-outline" size={18} color="#fff" />
             </TouchableOpacity>
@@ -92,7 +92,9 @@ const AttendanceTabs = ({ navigation }) => {
               size={26}
               style={styles.headerAvatar}
             />
-          </View>
+          </View> */}
+
+
         </View>
 
         <ScrollView
