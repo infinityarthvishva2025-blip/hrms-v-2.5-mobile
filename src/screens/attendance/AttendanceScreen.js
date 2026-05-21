@@ -11,7 +11,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  AppState
+  AppState,
+  InteractionManager
 } from 'react-native';
 import { colors } from '../../constants/colors';
 import { getTodayStatus, checkIn, checkOut, trackLocation } from '../../api/attendance.api';
@@ -52,8 +53,13 @@ const AttendanceScreen = ({ navigation }) => {
 
   useFocusEffect(
     React.useCallback(() => {
-      refreshProfile();
+      const task = InteractionManager.runAfterInteractions(() => {
+        refreshProfile();
+        fetchStatus();
+        fetchManagement();
+      });
       return () => {
+        task.cancel();
         // Safe navigation blur cleanup: automatically release camera resources if user exits screen
         webviewRef.current?.injectJavaScript(`
           if (window.stopCamera) { window.stopCamera(); }
@@ -61,7 +67,7 @@ const AttendanceScreen = ({ navigation }) => {
         `);
         setShowFaceModal(false);
       };
-    }, [])
+    }, [refreshProfile, fetchStatus, fetchManagement])
   );
 
   // AppState background/foreground listener for perfect privacy & resource safety
@@ -125,6 +131,7 @@ const AttendanceScreen = ({ navigation }) => {
   const locationRef = useRef(null);
   const lastVerifiedRef = useRef(0);
   const isVerifyingRef = useRef(false);
+  const isProcessingActionRef = useRef(false);
 
   const verifyLocation = useCallback(async (office, forceHighAccuracy = false) => {
     if (!office) return 'invalid';
@@ -193,12 +200,12 @@ const AttendanceScreen = ({ navigation }) => {
     }
   }, []);
 
-  const fetchManagement = async () => {
+  const fetchManagement = useCallback(async () => {
     try {
       const { data } = await getManagementEmployees();
       setManagementEmps(data.data || []);
     } catch (e) { }
-  };
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -228,11 +235,6 @@ const AttendanceScreen = ({ navigation }) => {
       setLoading(false);
     }
   }, [isBypassUser, verifyLocation]);
-
-  useEffect(() => {
-    fetchStatus();
-    fetchManagement();
-  }, [fetchStatus]);
 
   // Timer & Progress Logic
   useEffect(() => {
@@ -300,6 +302,9 @@ const AttendanceScreen = ({ navigation }) => {
 
   // ── Action handler ──
   const handleActionClick = async (op) => {
+    // ── DOUBLE-TAP GUARD ──
+    if (actionLoading) return;
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     const currentMode = todayRecord?.workMode || workMode;
@@ -350,6 +355,7 @@ const AttendanceScreen = ({ navigation }) => {
       if (msg.type === 'ready') {
         console.log('[FaceVerify] WebView loaded and models pre-warmed successfully.');
       } else if (msg.type === 'error') {
+        isProcessingActionRef.current = false;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Toast.show({ type: 'error', text1: 'Verification Failed', text2: msg.error });
         // Cleanly stop camera
@@ -359,6 +365,7 @@ const AttendanceScreen = ({ navigation }) => {
         `);
         setShowFaceModal(false);
       } else if (msg.type === 'cancel') {
+        isProcessingActionRef.current = false;
         // Cleanly stop camera
         webviewRef.current?.injectJavaScript(`
           if (window.stopCamera) { window.stopCamera(); }
@@ -366,6 +373,9 @@ const AttendanceScreen = ({ navigation }) => {
         `);
         setShowFaceModal(false);
       } else if (msg.type === 'descriptor') {
+        if (isProcessingActionRef.current) return;
+        isProcessingActionRef.current = true;
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Toast.show({ type: 'success', text1: 'Identity Verified ✓' });
         
@@ -377,11 +387,16 @@ const AttendanceScreen = ({ navigation }) => {
         setShowFaceModal(false);
 
         const op = faceOpRef.current;
-        if (op === 'checkin') proceedCheckIn();
-        else if (op === 'checkout') setShowReportModal(true);
+        if (op === 'checkin') {
+          proceedCheckIn();
+        } else if (op === 'checkout') {
+          setShowReportModal(true);
+          isProcessingActionRef.current = false;
+        }
       }
     } catch (err) {
       console.error(err);
+      isProcessingActionRef.current = false;
     }
   };
 
@@ -391,20 +406,32 @@ const AttendanceScreen = ({ navigation }) => {
       const lat = isBypassUser ? BYPASS_LAT : (locationRef.current?.latitude || userLocation?.latitude);
       const lng = isBypassUser ? BYPASS_LNG : (locationRef.current?.longitude || userLocation?.longitude);
 
-      await checkIn({
+      const { data: res } = await checkIn({
         latitude: lat,
         longitude: lng,
         workMode: workMode
       });
+
+      // ── OPTIMISTIC UPDATE: start the timer INSTANTLY, don't wait for fetchStatus ──
+      const serverRecord = res?.data?.attendance;
+      setTodayRecord(serverRecord || {
+        inTime: new Date().toISOString(),
+        workMode: workMode,
+        outTime: null,
+      });
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Toast.show({ type: 'success', text1: 'Checked In', text2: `Working from ${workMode}` });
+      Toast.show({ type: 'success', text1: 'Checked In ✓', text2: `Working from ${workMode}` });
+
+      // Reconcile in background — don't await, user already sees the timer
       fetchStatus();
       refreshProfile();
     } catch (error) {
-      const msg = error.response?.data?.message || 'Check-in failed';
-      Toast.show({ type: 'error', text1: 'Failed', text2: msg });
+      const msg = error.response?.data?.message || 'Check-in failed. Please try again.';
+      Toast.show({ type: 'error', text1: 'Check-In Failed', text2: msg });
     } finally {
       setActionLoading(false);
+      isProcessingActionRef.current = false;
     }
   };
 
@@ -858,7 +885,7 @@ const AttendanceScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContainer: { padding: 20 },
+  scrollContainer: { padding: 20, paddingBottom: 120 },
   statusSection: { marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   geoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   geoText: { fontSize: 11, fontWeight: '800' },

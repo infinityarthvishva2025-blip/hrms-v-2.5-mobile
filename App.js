@@ -37,7 +37,14 @@ export default function App() {
           <AppNavigator />
         </NavigationContainer>
       </AuthProvider>
-      <Toast config={toastConfig} topOffset={50} visibilityTime={3000} />
+      <Toast 
+        config={toastConfig} 
+        position="top"
+        animationType="slide"
+        topOffset={60} 
+        visibilityTime={3000} 
+        autoHide={true}
+      />
     </SafeAreaProvider>
   );
 }

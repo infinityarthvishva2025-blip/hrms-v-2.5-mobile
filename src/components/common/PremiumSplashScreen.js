@@ -53,7 +53,7 @@ const PremiumSplashScreen = ({ onFinish }) => {
     // Optimal display time to ensure animations finish without artificially delaying the user
     const timer = setTimeout(() => {
       if (onFinish) onFinish();
-    }, 1500); // 1.5 seconds total
+    }, 800); // 800ms total for an ultra-responsive boot flow
 
     return () => clearTimeout(timer);
   }, []);

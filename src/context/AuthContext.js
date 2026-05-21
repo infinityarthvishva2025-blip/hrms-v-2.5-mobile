@@ -49,9 +49,10 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
           // Token is expired/invalid. The _skipRefresh flag means the interceptor
           // will NOT try to rotate tokens here — it just rejects silently.
-          // The user will need to log in again; their state is cleared by the
-          // session-expired handler if the refresh had already been attempted.
-          if (bgCheckIdRef.current === checkId) {
+          // We should ONLY clear the session if the server explicitly tells us the token is invalid (401/403).
+          // If it's a transient network/server error, we should keep the cached user and not log them out!
+          const isAuthError = err.response && (err.response.status === 401 || err.response.status === 403);
+          if (bgCheckIdRef.current === checkId && isAuthError) {
             await storage.clearAll();
             setUser(null);
           }
@@ -71,12 +72,8 @@ export const AuthProvider = ({ children }) => {
     initAuth();
   }, [initAuth]);
 
-  const login = async (credentials) => {
-    // Cancel any in-flight background session check.
-    // This prevents the background getMe()'s 401 from racing with
-    // the fresh tokens we're about to receive and store.
+  const login = useCallback(async (credentials) => {
     bgCheckIdRef.current = null;
-
     const { data } = await loginApi(credentials);
     const { accessToken, refreshToken, employee } = data.data;
 
@@ -90,9 +87,9 @@ export const AuthProvider = ({ children }) => {
       text1: 'Login Successful',
       text2: `Welcome back, ${employee.name}`,
     });
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     bgCheckIdRef.current = null;
     try {
       await logoutApi();
@@ -102,11 +99,11 @@ export const AuthProvider = ({ children }) => {
       await storage.clearAll();
       setUser(null);
     }
-  };
+  }, []);
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     try {
-      const { data } = await getMe();
+      const { data } = await client.get('/auth/me', { _bypassCache: true, _skipRefresh: true });
       if (data?.data) {
         setUser(data.data);
         await storage.setUserInfo(data.data);
@@ -114,7 +111,7 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       console.error('Failed to refresh profile', e);
     }
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, refreshProfile }}>

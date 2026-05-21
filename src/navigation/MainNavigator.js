@@ -18,7 +18,7 @@ const Tab = createBottomTabNavigator();
 
 const CustomTabBar = ({ state, descriptors, navigation, insets }) => {
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <View style={[styles.container, { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 12) : 16 }]}>
       <View style={styles.tabBar}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -52,7 +52,8 @@ const CustomTabBar = ({ state, descriptors, navigation, insets }) => {
               key={index}
               onPress={onPress}
               style={[styles.tabItem, isFocused && styles.tabItemFocused]}
-              activeOpacity={0.7}
+              activeOpacity={0.85}
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
             >
               {isFocused ? (
                 <LinearGradient
@@ -61,12 +62,12 @@ const CustomTabBar = ({ state, descriptors, navigation, insets }) => {
                   end={{ x: 1, y: 0 }}
                   style={styles.activeTabGradient}
                 >
-                  <Ionicons name={iconName} size={18} color="#FFF" />
+                  <Ionicons name={iconName} size={16} color="#FFF" />
                   <Text style={styles.labelFocused} numberOfLines={1}>{label}</Text>
                 </LinearGradient>
               ) : (
                 <View style={styles.inactiveTab}>
-                  <Ionicons name={iconName} size={22} color={colors.textTertiary} />
+                  <Ionicons name={iconName} size={20} color={colors.textTertiary} />
                   <Text style={styles.labelInactive} numberOfLines={1}>{label}</Text>
                 </View>
               )}
@@ -127,61 +128,66 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 0,
-    width: '100%',
+    left: 0,
+    right: 0,
     paddingHorizontal: 16,
     backgroundColor: 'transparent',
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    height: 72,
-    borderRadius: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    // Premium Multi-Layer Shadows
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 15,
-    elevation: 10,
+    paddingHorizontal: 6,
+    // Sleek premium micro-borders
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    borderColor: 'rgba(15, 23, 42, 0.05)',
+    // Premium soft dynamic multi-layered drop shadow
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 8,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
-    paddingVertical: 8,
   },
   tabItemFocused: {
-    flex: 2.2, // Give more room for the horizontal pill
+    flex: 2.2, // Give more room for active pill
   },
   activeTabGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 28,
+    height: 52,
+    borderRadius: 26,
     width: '100%',
+    paddingHorizontal: 12,
   },
   inactiveTab: {
     alignItems: 'center',
     justifyContent: 'center',
+    height: 52,
+    width: '100%',
   },
   labelFocused: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
-    marginLeft: 8,
+    fontSize: 12.5,
+    fontWeight: '800',
+    marginLeft: 6,
+    letterSpacing: -0.2,
   },
   labelInactive: {
     color: colors.textTertiary,
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 4,
+    fontSize: 9.5,
+    fontWeight: '700',
+    marginTop: 3,
+    letterSpacing: -0.1,
   },
 });
 

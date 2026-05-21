@@ -115,18 +115,20 @@ const LeaveDashboardScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {loading && !data ? (
-        <LoadingSpinner />
-      ) : (
-        <FlatList
-          data={filteredLeaves}
-          keyExtractor={(item) => item._id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContainer}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} colors={[colors.gradients.secondary[0]]} />}
-          ListEmptyComponent={<EmptyState icon="journal-outline" title="No Records Found" message="Try adjusting your filters" />}
-        />
-      )}
+      <FlatList
+        data={filteredLeaves}
+        keyExtractor={(item) => item._id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} colors={[colors.gradients.secondary[0]]} />}
+        ListEmptyComponent={
+          loading && !data ? (
+            <View style={{ paddingVertical: 60, alignItems: 'center' }}><LoadingSpinner /></View>
+          ) : (
+            <EmptyState icon="journal-outline" title="No Records Found" message="Try adjusting your filters" />
+          )
+        }
+      />
     </View>
   );
 

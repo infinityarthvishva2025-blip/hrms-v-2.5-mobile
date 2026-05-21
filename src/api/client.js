@@ -8,26 +8,61 @@ const client = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 8000, // 8s timeout to prevent hanging connections
 });
 
+// ─── HIGH-PERFORMANCE CACHE MEMORY ───────────────────────────────────────────
+const getCache = new Map();
+const CACHE_TTL = 7000; // 7 seconds in-memory cache TTL for GET requests
+
+// Periodically clean up expired cache nodes to free memory
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of getCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL) {
+      getCache.delete(key);
+    }
+  }
+}, 30000);
+
 // ─── Session Expired Callback ─────────────────────────────────────────────────
-// AuthContext registers this so the interceptor can call setUser(null)
-// when a refresh fails, keeping React state in sync with storage.
 let _onSessionExpired = null;
 export const setSessionExpiredHandler = (handler) => {
   _onSessionExpired = handler;
 };
 
-// Request Interceptor: Attach Access Token
+// ─── Request Interceptor: Attach Token, Caching & Deduplication ───────────────
 client.interceptors.request.use(async (reqConfig) => {
+  // 1. Attach Access Token
   const token = await storage.getAccessToken();
   if (token) {
     reqConfig.headers.Authorization = `Bearer ${token}`;
   }
+
+  // 2. Perform Performance GET Caching
+  const method = reqConfig.method?.toLowerCase();
+  if (method === 'get' && !reqConfig._bypassCache) {
+    const cacheKey = reqConfig.url + JSON.stringify(reqConfig.params || {});
+
+    // A. Check for cache hits
+    const cached = getCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      // Return cached results instantly
+      reqConfig.adapter = () => Promise.resolve({
+        data: cached.data,
+        status: 200,
+        statusText: 'OK',
+        headers: reqConfig.headers,
+        config: reqConfig,
+      });
+      return reqConfig;
+    }
+  }
+
   return reqConfig;
 });
 
-// Response Interceptor: Handle Token Refresh
+// ─── Response Interceptor: Caching, Auto-Retry & Token Refresh ───────────────
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -42,24 +77,54 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
+// Helper for waiting during exponential backoff retries
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 client.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const reqConfig = response.config;
+    const method = reqConfig.method?.toLowerCase();
+
+    // 1. Cache successful GET responses
+    if (method === 'get' && !reqConfig._bypassCache && !response.headers['x-from-cache']) {
+      const cacheKey = reqConfig.url + JSON.stringify(reqConfig.params || {});
+      getCache.set(cacheKey, {
+        data: response.data,
+        timestamp: Date.now()
+      });
+    }
+
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
+    if (!originalRequest) return Promise.reject(error);
 
-    // Reject immediately if the request was to login or refresh
+    // Reject immediately for login/refresh requests
     if (originalRequest.url.includes('/auth/login') || originalRequest.url.includes('/auth/refresh')) {
       return Promise.reject(error);
     }
 
-    // Allow individual requests to opt-out of the refresh retry logic.
-    // Used by initAuth's background getMe() to prevent a race condition
-    // where the background check rotates the DB refresh token while a
-    // concurrent login() call is in progress.
     if (originalRequest._skipRefresh) {
       return Promise.reject(error);
     }
+    
+    const method = originalRequest.method?.toLowerCase();
 
+    // A. AUTOMATIC SILENT RETRY: Safe GET requests retry dynamically on network drop or 5xx
+    const isNetworkError = !error.response || (error.response.status >= 500 && error.response.status <= 599);
+    if (method === 'get' && isNetworkError) {
+      originalRequest._retryCount = originalRequest._retryCount || 0;
+      if (originalRequest._retryCount < 3) {
+        originalRequest._retryCount++;
+        const backoffDelay = originalRequest._retryCount * 1000;
+        console.warn(`[API Client] Network failure. Retrying ${originalRequest.url} (Attempt ${originalRequest._retryCount}/3) in ${backoffDelay}ms...`);
+        await wait(backoffDelay);
+        return client(originalRequest);
+      }
+    }
+
+    // B. AUTH TOKEN ROTATION: Handle 401 Session refreshes
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -86,14 +151,13 @@ client.interceptors.response.use(
         });
 
         const newAccessToken = data.data.accessToken;
-        const newRefreshToken = data.data.refreshToken; // Rotating refresh token
+        const newRefreshToken = data.data.refreshToken;
 
         await storage.setAccessToken(newAccessToken);
         if (newRefreshToken) {
           await storage.setRefreshToken(newRefreshToken);
         }
 
-        // Process queued requests
         processQueue(null, newAccessToken);
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return client(originalRequest);
@@ -101,7 +165,6 @@ client.interceptors.response.use(
         processQueue(refreshError, null);
         await storage.clearAll();
 
-        // Notify AuthContext to reset React state (setUser(null))
         if (_onSessionExpired) _onSessionExpired();
 
         Toast.show({

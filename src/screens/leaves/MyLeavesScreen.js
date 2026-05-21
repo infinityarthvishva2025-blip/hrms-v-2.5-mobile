@@ -198,10 +198,6 @@ const MyLeavesScreen = ({ navigation }) => {
     return allLeaves.filter((l) => l.overallStatus === filter);
   }, [allLeaves, filter]);
 
-  if (loading && !data) {
-    return <View style={styles.center}><LoadingSpinner /></View>;
-  }
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -266,13 +262,17 @@ const MyLeavesScreen = ({ navigation }) => {
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor={colors.primary} />}
         ListEmptyComponent={
-          <EmptyState
-            icon="document-text-outline"
-            title={filter === 'All' ? 'No Leaves Yet' : `No ${filter} Leaves`}
-            message={filter === 'All'
-              ? "You haven't applied for any leaves yet."
-              : `You have no ${filter.toLowerCase()} leave applications.`}
-          />
+          loading && !data ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 }}><LoadingSpinner /></View>
+          ) : (
+            <EmptyState
+              icon="document-text-outline"
+              title={filter === 'All' ? 'No Leaves Yet' : `No ${filter} Leaves`}
+              message={filter === 'All'
+                ? "You haven't applied for any leaves yet."
+                : `You have no ${filter.toLowerCase()} leave applications.`}
+            />
+          )
         }
         showsVerticalScrollIndicator={false}
       />

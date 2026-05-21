@@ -109,8 +109,9 @@ const ProfileScreen = ({ navigation }) => {
   const startFaceSession = React.useCallback(() => {
     if (!webviewRef.current) return;
     webviewRef.current.injectJavaScript(`
-      window.FACE_OP = 'register';
-      window.startVerification();
+      if (window.startCamera) {
+        window.startCamera('register', []);
+      }
       true;
     `);
   }, []);
@@ -126,7 +127,7 @@ const ProfileScreen = ({ navigation }) => {
   React.useEffect(() => {
     if (!showFaceModal && webviewRef.current) {
       webviewRef.current.injectJavaScript(`
-        if (typeof resetAndStop === 'function') resetAndStop();
+        if (window.stopCamera) { window.stopCamera(); }
         true;
       `);
     }

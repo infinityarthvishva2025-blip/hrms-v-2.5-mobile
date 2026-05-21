@@ -122,4 +122,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PremiumToast;
+export default React.memo(PremiumToast);

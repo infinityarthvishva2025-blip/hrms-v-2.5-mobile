@@ -10,7 +10,8 @@ import {
   StatusBar,
   Modal,
   Dimensions,
-  Platform
+  Platform,
+  InteractionManager
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -47,18 +48,27 @@ const AttendanceSummaryScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [error, setError] = useState(null);
 
   const fetchSummary = useCallback(async (date, silent = false, isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else if (!silent) setLoading(true);
+    if (!silent && !isRefresh) setError(null);
 
     try {
       const from = format(startOfMonth(date), 'yyyy-MM-dd');
       const to = format(endOfMonth(date), 'yyyy-MM-dd');
-      const { data: res } = await getMySummary({ from, to });
+      const { data: res } = await getMySummary({ from, to, _bypassCache: true });
       setData(res.data);
-    } catch (error) {
-      console.error('Summary fetch error:', error);
+      setError(null);
+    } catch (err) {
+      const isNetworkError = !err.response;
+      const serverMsg = err.response?.data?.message;
+      setError(
+        isNetworkError
+          ? 'No internet connection. Check your network and try again.'
+          : serverMsg || 'Failed to load attendance data. Please try again.'
+      );
     } finally {
       if (isRefresh) setRefreshing(false);
       if (!silent) setLoading(false);
@@ -67,11 +77,17 @@ const AttendanceSummaryScreen = ({ navigation }) => {
 
   useFocusEffect(
     useCallback(() => {
-      fetchSummary(currentDate);
-      const interval = setInterval(() => {
-        fetchSummary(currentDate, true);
-      }, 45000); 
-      return () => clearInterval(interval);
+      let interval;
+      const task = InteractionManager.runAfterInteractions(() => {
+        fetchSummary(currentDate);
+        interval = setInterval(() => {
+          fetchSummary(currentDate, true);
+        }, 45000);
+      });
+      return () => {
+        task.cancel();
+        if (interval) clearInterval(interval);
+      };
     }, [currentDate, fetchSummary])
   );
 
@@ -380,6 +396,28 @@ const AttendanceSummaryScreen = ({ navigation }) => {
         ListEmptyComponent={
           loading && !data ? (
             <View style={styles.centerBox}><LoadingSpinner /></View>
+          ) : error ? (
+            <View style={styles.errorBox}>
+              <View style={styles.errorIconBg}>
+                <Ionicons name="cloud-offline-outline" size={44} color="#EF4444" />
+              </View>
+              <Text style={styles.errorTitle}>Something went wrong</Text>
+              <Text style={styles.errorMessage}>{error}</Text>
+              <TouchableOpacity
+                onPress={() => fetchSummary(currentDate)}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={colors.gradients.primary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.retryBtn}
+                >
+                  <Ionicons name="refresh" size={16} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.retryBtnText}>Retry</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           ) : (
             <EmptyState title="No Records" message="No attendance data for this period" />
           )
@@ -394,7 +432,49 @@ const AttendanceSummaryScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   centerBox: { paddingVertical: 60, alignItems: 'center' },
-  listContent: { paddingBottom: 40 },
+  listContent: { paddingBottom: 120 },
+  errorBox: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 60,
+  },
+  errorIconBg: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0F172A',
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 28,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+  },
+  retryBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.2,
+  },
   rowWrapper: {
     paddingHorizontal: 16,
     justifyContent: 'space-between',

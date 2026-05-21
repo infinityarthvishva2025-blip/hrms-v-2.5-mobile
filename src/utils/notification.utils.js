@@ -38,7 +38,6 @@ export async function registerForPushNotificationsAsync() {
     
     // Get FCM token directly for backend use
     token = (await Notifications.getDevicePushTokenAsync()).data;
-    console.log('FCM Token:', token);
   } else {
     console.log('Must use physical device for Push Notifications');
   }
@@ -50,7 +49,6 @@ export const updateFcmTokenOnBackend = async (token) => {
   try {
     if (!token) return;
     await client.patch('/employees/profile/fcm-token', { fcmToken: token });
-    console.log('FCM token updated on backend');
   } catch (error) {
     console.error('Error updating FCM token on backend:', error.response?.data || error.message);
   }

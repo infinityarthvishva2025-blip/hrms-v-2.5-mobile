@@ -2,7 +2,7 @@ import client from './client';
 
 export const checkIn = (data) => client.post('/attendance/check-in', data);
 export const checkOut = (data) => client.post('/attendance/check-out', data);
-export const getTodayStatus = () => client.get('/attendance/today');
+export const getTodayStatus = () => client.get('/attendance/today', { _bypassCache: true });
 export const getMySummary = (params) => client.get('/attendance/my-summary', { params });
 export const getAdminAttendance = (params) => client.get('/attendance/admin', { params });
 export const trackLocation = (data) => client.post('/attendance/track', data);

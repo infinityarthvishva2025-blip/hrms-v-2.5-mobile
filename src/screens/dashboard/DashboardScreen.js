@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, RefreshControl,
-  TouchableOpacity, Dimensions, StatusBar, Animated,
+  TouchableOpacity, Dimensions, StatusBar, Animated, InteractionManager,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,12 +9,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { useAuth } from '../../hooks/useAuth';
 import { useFetch } from '../../hooks/useFetch';
-import { getTodayStatus, getMySummary } from '../../api/attendance.api';
-import { getUpcomingBirthdays } from '../../api/employee.api';
-import { getMyAnnouncements } from '../../api/announcement.api';
+import { getEmployeeDashboard } from '../../api/dashboard.api';
 import { isManagement } from '../../utils/roleUtils';
 import Avatar from '../../components/common/Avatar';
 import PremiumHeader from '../../components/common/PremiumHeader';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 const { width } = Dimensions.get('window');
 
@@ -33,24 +32,32 @@ const DashboardScreen = ({ navigation }) => {
   const isAdmin = isManagement(user?.role);
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
-  // Data fetching
-  const { data: todayStatus, execute: fetchStatus, loading: statusLoading } = useFetch(getTodayStatus, null);
-  const { data: summaryData, execute: fetchSummary, loading: summaryLoading } = useFetch(getMySummary, { summary: { present: 0, absent: 0, late: 0, totalHours: 0 } });
-  const { data: birthdaysResponse, execute: fetchBirthdays, loading: birthdaysLoading } = useFetch(getUpcomingBirthdays, null);
-  const { data: announcementsData, execute: fetchAnnouncements, loading: announcementsLoading } = useFetch(getMyAnnouncements, { page: 1, limit: 3 });
+  // Unified Data fetching
+  const { data: dashboardData, execute: fetchDashboard, loading: isLoading } = useFetch(getEmployeeDashboard, null);
 
-  const isLoading = statusLoading || summaryLoading || birthdaysLoading || announcementsLoading;
-  const isInitialLoad = !todayStatus && !summaryData && !birthdaysResponse && !announcementsData;
+  const isInitialLoad = !dashboardData;
+
+  const todayRecord = dashboardData?.todayRecord;
+  const isCheckedIn = !!todayRecord?.inTime;
+  const isCheckedOut = !!todayRecord?.outTime;
+  const inTimeStr = isCheckedIn ? new Date(todayRecord.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+  const summary = dashboardData?.monthlySummary || { present: 0, absent: 0, late: 0, totalHours: 0 };
+  const goalProgress = Math.min((summary.present / 22) * 100, 100);
+
+  const leafSummary = dashboardData?.leaveSummary || {
+    paidLeaveBalance: user?.paidLeaveBalance || 0,
+    compOffBalance: user?.compOffBalance || 0
+  };
 
   const birthdays = useMemo(() => {
-    const data = birthdaysResponse || {};
-    return [...(data.today || []), ...(data.tomorrow || [])];
-  }, [birthdaysResponse]);
+    const bday = dashboardData?.birthdays || {};
+    return [...(bday.today || []), ...(bday.tomorrow || [])];
+  }, [dashboardData]);
 
   const recentAnnouncements = useMemo(() => {
-    const list = Array.isArray(announcementsData) ? announcementsData : (announcementsData?.announcements || []);
-    return list.slice(0, 3);
-  }, [announcementsData]);
+    return dashboardData?.announcements || [];
+  }, [dashboardData]);
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -60,13 +67,16 @@ const DashboardScreen = ({ navigation }) => {
   }, []);
 
   const onRefresh = useCallback(async () => {
-    await Promise.all([fetchStatus(), fetchSummary(), fetchBirthdays(), fetchAnnouncements()]);
-  }, [fetchStatus, fetchSummary, fetchBirthdays, fetchAnnouncements]);
+    await fetchDashboard();
+  }, [fetchDashboard]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchStatus(); fetchSummary(); fetchBirthdays(); fetchAnnouncements();
-    }, [fetchStatus, fetchSummary, fetchBirthdays, fetchAnnouncements])
+      const task = InteractionManager.runAfterInteractions(() => {
+        fetchDashboard();
+      });
+      return () => task.cancel();
+    }, [fetchDashboard])
   );
 
   const getGreeting = (h) => {
@@ -74,13 +84,6 @@ const DashboardScreen = ({ navigation }) => {
     if (h < 17) return 'Good Afternoon';
     return 'Good Evening';
   };
-
-  const isCheckedIn = !!todayStatus?.record?.inTime;
-  const isCheckedOut = !!todayStatus?.record?.outTime;
-  const inTimeStr = isCheckedIn ? new Date(todayStatus.record.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
-
-  const summary = summaryData?.summary || { present: 0, absent: 0, late: 0, totalHours: 0 };
-  const goalProgress = Math.min((summary.present / 22) * 100, 100);
 
   return (
     <View style={styles.container}>
@@ -176,13 +179,13 @@ const DashboardScreen = ({ navigation }) => {
           <View style={styles.balanceGrid}>
             <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.balanceCard} start={{x:0,y:0}} end={{x:1,y:1}}>
               <Ionicons name="calendar" size={32} color="rgba(255,255,255,0.15)" style={styles.balanceIconBg} />
-              <Text style={styles.balanceVal}>{user?.paidLeaveBalance || 0}</Text>
+              <Text style={styles.balanceVal}>{leafSummary.paidLeaveBalance}</Text>
               <Text style={styles.balanceLabel}>Paid Leaves (PL)</Text>
             </LinearGradient>
             
             <LinearGradient colors={['#10B981', '#059669']} style={styles.balanceCard} start={{x:0,y:0}} end={{x:1,y:1}}>
               <Ionicons name="time" size={32} color="rgba(255,255,255,0.15)" style={styles.balanceIconBg} />
-              <Text style={styles.balanceVal}>{user?.compOffBalance || 0}</Text>
+              <Text style={styles.balanceVal}>{leafSummary.compOffBalance}</Text>
               <Text style={styles.balanceLabel}>Comp-Offs (CO)</Text>
             </LinearGradient>
           </View>
@@ -207,7 +210,7 @@ const DashboardScreen = ({ navigation }) => {
           </View>
 
           {/* Notice Board */}
-          {(recentAnnouncements.length > 0 || announcementsLoading) && (
+          {recentAnnouncements.length > 0 && (
             <>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionHeader}>Notice Board</Text>
@@ -237,7 +240,7 @@ const DashboardScreen = ({ navigation }) => {
           )}
 
           {/* Events */}
-          {(birthdays.length > 0 || birthdaysLoading) && (
+          {birthdays.length > 0 && (
             <>
               <Text style={styles.sectionHeader}>Life Events</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventsScroll}>
@@ -250,6 +253,36 @@ const DashboardScreen = ({ navigation }) => {
                         <Text style={styles.eventName} numberOfLines={1}>{emp.name}</Text>
                         <Text style={[styles.eventDate, isToday && { color: '#F59E0B', fontWeight: '700' }]}>
                           {isToday ? '🎉 Birthday Today' : 'Upcoming Tomorrow'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
+
+          {/* Upcoming Holidays (New Section!) */}
+          {dashboardData?.upcomingHolidays?.length > 0 && (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionHeader}>Upcoming Holidays</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Holidays')}>
+                  <Text style={styles.seeAllText}>View All</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.eventsScroll}>
+                {dashboardData.upcomingHolidays.map((holiday) => {
+                  const holDate = new Date(holiday.date);
+                  return (
+                    <View key={holiday._id} style={styles.eventCard}>
+                      <View style={[styles.noticeIconBox, { backgroundColor: '#FCE7F3', width: 42, height: 42, borderRadius: 14 }]}>
+                        <Ionicons name="gift-outline" size={20} color="#DB2777" />
+                      </View>
+                      <View style={styles.eventInfo}>
+                        <Text style={styles.eventName} numberOfLines={1}>{holiday.name}</Text>
+                        <Text style={styles.eventDate}>
+                          {holDate.toLocaleDateString([], { month: 'short', day: 'numeric' })} • {holiday.type}
                         </Text>
                       </View>
                     </View>
